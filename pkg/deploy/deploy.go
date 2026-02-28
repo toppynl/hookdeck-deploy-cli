@@ -264,6 +264,10 @@ func buildDestinationRequest(dst *manifest.DestinationConfig) *UpsertDestination
 	}
 	if dst.Auth != nil {
 		config["auth"] = dst.Auth
+	} else if dst.AuthType != "" {
+		// The Hookdeck API requires config.auth when auth_type is set.
+		// Default to empty object for auth types like HOOKDECK_SIGNATURE.
+		config["auth"] = map[string]interface{}{}
 	}
 	if dst.RateLimit != 0 {
 		config["rate_limit"] = dst.RateLimit
