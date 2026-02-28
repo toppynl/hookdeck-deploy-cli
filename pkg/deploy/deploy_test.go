@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/manifest"
@@ -128,6 +129,22 @@ func TestDeploy_DryRun_ConnectionWithRules(t *testing.T) {
 	// All four resources should be present
 	if result.Source == nil || result.Destination == nil || result.Connection == nil || result.Transformation == nil {
 		t.Fatal("expected all four resource results for full manifest")
+	}
+}
+
+func TestDeploy_MissingCodeFile(t *testing.T) {
+	m := &manifest.Manifest{
+		Transformation: &manifest.TransformationConfig{
+			Name: "no-code-file",
+		},
+	}
+
+	_, err := Deploy(context.Background(), &mockClient{}, m, Options{})
+	if err == nil {
+		t.Fatal("expected error when code_file is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "code_file is required") {
+		t.Errorf("expected error to contain %q, got %q", "code_file is required", err.Error())
 	}
 }
 
