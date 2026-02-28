@@ -91,7 +91,7 @@ echo "All binary architectures verified!"
 # Test wrapper script on current platform
 echo ""
 echo "Testing wrapper script on current platform..."
-if node bin/hookdeck-deploy-cli.js --version > /dev/null 2>&1; then
+if node bin/hookdeck-deploy-cli.cjs --version > /dev/null 2>&1; then
     echo "OK Wrapper script works on $(uname -s)-$(uname -m)"
 else
     echo "Warning: Wrapper script test skipped (binary may not exist for this platform)"
@@ -104,7 +104,7 @@ echo "Testing wrapper script exit code handling..."
 # Test that wrapper propagates non-zero exit codes correctly
 # Run an invalid command that will cause the binary to exit with non-zero
 set +e  # Temporarily disable exit on error
-node bin/hookdeck-deploy-cli.js invalid-command-that-does-not-exist > /dev/null 2>&1
+node bin/hookdeck-deploy-cli.cjs invalid-command-that-does-not-exist > /dev/null 2>&1
 EXIT_CODE=$?
 set -e  # Re-enable exit on error
 
@@ -118,7 +118,7 @@ fi
 # Test npm pack
 echo "Testing npm pack..."
 npm pack --dry-run > /tmp/npm-pack-output.txt 2>&1
-if grep -q "bin/hookdeck-deploy-cli.js" /tmp/npm-pack-output.txt && grep -q "binaries/" /tmp/npm-pack-output.txt; then
+if grep -q "bin/hookdeck-deploy-cli.cjs" /tmp/npm-pack-output.txt && grep -q "binaries/" /tmp/npm-pack-output.txt; then
     echo "OK npm pack includes wrapper script and binaries"
 else
     echo "Error: npm pack missing required files"

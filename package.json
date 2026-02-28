@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/toppynl/hookdeck-deploy-cli#readme",
   "bin": {
-    "hookdeck-deploy": "./bin/hookdeck-deploy-cli.js"
+    "hookdeck-deploy": "./bin/hookdeck-deploy-cli.cjs"
   },
   "exports": {
     "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json",
