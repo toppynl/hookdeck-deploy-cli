@@ -585,8 +585,12 @@ func TestDeploy_LiveMode_ConnectionWithTransformationsShorthand(t *testing.T) {
 	if rule["type"] != "transform" {
 		t.Errorf("expected rule type 'transform', got '%v'", rule["type"])
 	}
-	if rule["transformation_name"] != "my-transform" {
-		t.Errorf("expected transformation_name 'my-transform', got '%v'", rule["transformation_name"])
+	trObj, ok := rule["transformation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected transformation to be a map, got %T", rule["transformation"])
+	}
+	if trObj["name"] != "my-transform" {
+		t.Errorf("expected transformation name 'my-transform', got '%v'", trObj["name"])
 	}
 	// Transformation ID should be injected from the upserted transformation
 	if rule["transformation_id"] != "trs_abc" {

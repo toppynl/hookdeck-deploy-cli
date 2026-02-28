@@ -333,8 +333,10 @@ func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinati
 	// Convert transformations shorthand to transform rules
 	for _, name := range conn.Transformations {
 		rule := map[string]interface{}{
-			"type":                "transform",
-			"transformation_name": name,
+			"type": "transform",
+			"transformation": map[string]interface{}{
+				"name": name,
+			},
 		}
 		if transformationID != "" {
 			rule["transformation_id"] = transformationID
