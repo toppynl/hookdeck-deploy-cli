@@ -1,0 +1,8 @@
+{
+  "$schema": "../../../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
+  "extends": "../../hookdeck.jsonc",
+  "source": {
+    "name": "order-webhook",
+    "description": "Receives order webhooks from the payment provider"
+  }
+}

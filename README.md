@@ -102,6 +102,8 @@ hookdeck-deploy deploy
 
 Resources are deployed in dependency order: source -> transformation -> destination -> connection.
 
+For a complete multi-environment setup, see the [`example/`](./example) directory.
+
 ## Manifest Guide
 
 ### Sources
@@ -161,19 +163,32 @@ Wire a source to a destination with optional filtering:
 }
 ```
 
-Connections reference sources and destinations by name. The `filter` shorthand is converted to a filter rule during deploy. You can also reference transformations:
+Connections reference sources and destinations by name. The `filter` shorthand is converted to a filter rule during deploy. Filters use a MongoDB-like query syntax with operators like `$and`, `$or`, and `$exist`:
 
 ```jsonc
 "connection": {
   "name": "orders-to-processor",
   "source": "order-source",
+  "filter": {
+    "$or": [
+      { "headers.x-event-type": "order.created" },
+      {
+        "$and": [
+          { "headers.x-event-type": "order.updated" },
+          { "body.status": { "$exist": true } }
+        ]
+      }
+    ]
+  },
   "transformations": ["enrich-order"]
 }
 ```
 
+Both `filter` and `transformations` are shorthands that get converted to rules during deployment.
+
 ### Transformations
 
-Transformations use a separate schema and manifest structure:
+Transformations use a separate schema and manifest structure. Use `code_file` to point to a JavaScript file containing the transformation logic — its contents are read from disk and uploaded to Hookdeck on deploy:
 
 ```jsonc
 {
@@ -181,12 +196,37 @@ Transformations use a separate schema and manifest structure:
   "transformation": {
     "name": "enrich-order",
     "description": "Adds computed fields to order payload",
+    "code_file": "handler.js",
     "env": {
       "API_BASE_URL": "https://api.example.com"
+    }
+  },
+  "env": {
+    "production": {
+      "transformation": {
+        "env": {
+          "API_BASE_URL": "https://api-production.example.com"
+        }
+      }
     }
   }
 }
 ```
+
+The `code_file` path is resolved relative to the manifest file. The JavaScript file must use the Hookdeck transformation signature:
+
+```js
+addHandler("transform", (request, context) => {
+  // Access environment variables defined in the manifest
+  const apiUrl = context.env.API_BASE_URL;
+
+  // Modify the request before delivery
+  request.body.processed_at = new Date().toISOString();
+  return request;
+});
+```
+
+Environment variables defined in `env` are available at runtime via `context.env`. Per-environment overrides (shown above) let you use different values across staging and production.
 
 ### Inheritance
 
@@ -276,6 +316,44 @@ Reference environment variables in manifest values with `${VAR_NAME}`:
 ```
 
 Variables are resolved from the process environment at deploy time.
+
+## Project Structure
+
+A recommended layout for monorepos with multiple webhook integrations:
+
+```
+hookdeck.jsonc              # Root manifest: environment profiles
+sources/
+  order-webhook/
+    hookdeck.jsonc           # Source definition (extends root)
+transformations/
+  enrich-order/
+    hookdeck.jsonc           # Transformation manifest (separate schema)
+    handler.js               # Transformation code
+destinations/
+  order-processor/
+    hookdeck.jsonc           # Destination + connection (extends root)
+```
+
+Each sub-manifest uses `extends` to inherit the root environment profiles, so you only define your profiles once. Transformation manifests use their own schema (`hookdeck-transformation.schema.json`) and don't use `extends`.
+
+See the [`example/`](./example) directory for a working version of this layout.
+
+### Deploy Scripts
+
+A typical `package.json` setup for deploying across environments:
+
+```json
+{
+  "scripts": {
+    "deploy:staging": "hookdeck-deploy deploy -f sources/order-webhook/hookdeck.jsonc -e staging && hookdeck-deploy deploy -f transformations/enrich-order/hookdeck.jsonc -e staging && hookdeck-deploy deploy -f destinations/order-processor/hookdeck.jsonc -e staging",
+    "deploy:production": "hookdeck-deploy deploy -f sources/order-webhook/hookdeck.jsonc -e production && hookdeck-deploy deploy -f transformations/enrich-order/hookdeck.jsonc -e production && hookdeck-deploy deploy -f destinations/order-processor/hookdeck.jsonc -e production",
+    "drift:staging": "hookdeck-deploy drift -f destinations/order-processor/hookdeck.jsonc -e staging"
+  }
+}
+```
+
+Resources must be deployed in dependency order: sources and transformations before the destination/connection manifest that references them.
 
 ## CLI Reference
 
