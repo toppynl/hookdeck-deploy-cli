@@ -1,0 +1,87 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"title": "Hookdeck Transformation Manifest",
+	"description": "Configuration for standalone Hookdeck transformations managed by hookdeck-deploy",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "JSON schema reference"
+		},
+		"profile": {
+			"type": "string",
+			"description": "Default credential profile name (references ~/.config/hookdeck/config.toml)"
+		},
+		"transformation": {
+			"type": "object",
+			"description": "Transformation configuration",
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "Transformation name (must be unique within the project)"
+				},
+				"description": {
+					"type": "string",
+					"description": "Human-readable description"
+				},
+				"code_file": {
+					"type": "string",
+					"description": "Path to the JavaScript transformation source file (relative to manifest)"
+				},
+				"env": {
+					"type": "object",
+					"description": "Environment variables available to the transformation at runtime. Values may use ${ENV_VAR} interpolation.",
+					"additionalProperties": {
+						"type": "string"
+					}
+				},
+				"env_vars": {
+					"type": "object",
+					"description": "Deprecated alias for 'env'. Environment variables available to the transformation.",
+					"additionalProperties": {
+						"type": "string"
+					}
+				}
+			},
+			"required": ["name"],
+			"additionalProperties": false
+		},
+		"env": {
+			"type": "object",
+			"description": "Environment-specific overrides",
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"profile": {
+						"type": "string",
+						"description": "Credential profile name for this environment"
+					},
+					"transformation": {
+						"type": "object",
+						"description": "Partial transformation overrides for this environment",
+						"properties": {
+							"env": {
+								"type": "object",
+								"description": "Environment variable overrides. Values may use ${ENV_VAR} interpolation.",
+								"additionalProperties": {
+									"type": "string"
+								}
+							},
+							"env_vars": {
+								"type": "object",
+								"description": "Deprecated alias for 'env'. Environment variable overrides.",
+								"additionalProperties": {
+									"type": "string"
+								}
+							}
+						},
+						"additionalProperties": false
+					}
+				},
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["transformation"],
+	"additionalProperties": false
+}
