@@ -1,0 +1,29 @@
+version: 2
+env:
+  - GO111MODULE=on
+before:
+  hooks:
+    - go mod download
+project_name: hookdeck-deploy-cli
+builds:
+  - id: hookdeck-deploy-cli-linux
+    ldflags:
+      - -s -w -X github.com/toppynl/hookdeck-deploy-cli/cmd.version={{.Version}}
+    binary: hookdeck-deploy-cli
+    env:
+      - CGO_ENABLED=0
+    main: ./main.go
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+release:
+  prerelease: auto
+  mode: append
+changelog:
+  disable: true
+checksum:
+  name_template: "{{ .ProjectName }}-linux-checksums.txt"
+snapshot:
+  name_template: "{{ .Tag }}-next"
