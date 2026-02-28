@@ -94,6 +94,9 @@ jobs:
           node-version: "22.x"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Install latest npm (trusted publishing requires >= 11.5.1)
+        run: npm install -g npm@latest
+
       - name: Get GitHub tag version
         id: tag-version
         run: |
@@ -138,5 +141,3 @@ jobs:
           echo "tag=${NPM_TAG}" >> $GITHUB_OUTPUT
 
       - run: npm publish --provenance --tag ${{ steps.npm_tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_TOPPY_ORG }}
