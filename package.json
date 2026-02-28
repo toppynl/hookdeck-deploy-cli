@@ -1,6 +1,6 @@
 {
   "name": "@toppy/hookdeck-deploy-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for deploying Hookdeck webhook infrastructure from declarative manifests",
   "repository": {
     "type": "git",
