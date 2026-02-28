@@ -6,7 +6,13 @@
     "type": "git",
     "url": "git+https://github.com/toppynl/hookdeck-deploy-cli.git"
   },
-  "keywords": ["cli", "deploy", "hookdeck", "infrastructure-as-code", "webhook"],
+  "keywords": [
+    "cli",
+    "deploy",
+    "hookdeck",
+    "infrastructure-as-code",
+    "webhook"
+  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/toppynl/hookdeck-deploy-cli/issues"
@@ -19,7 +25,11 @@
     "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json",
     "./schemas/hookdeck-transformation.schema.json": "./schemas/hookdeck-transformation.schema.json"
   },
-  "files": ["bin/", "binaries/", "schemas/*.json"],
+  "files": [
+    "bin/",
+    "binaries/",
+    "schemas/*.json"
+  ],
   "publishConfig": {
     "access": "public"
   },
