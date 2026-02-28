@@ -1,0 +1,21 @@
+# Compiled binary
+/hookdeck-deploy-cli
+hookdeck-deploy-cli.exe
+
+# GoReleaser output
+dist/
+binaries/
+
+# Node
+node_modules/
+
+# Go test artifacts
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
