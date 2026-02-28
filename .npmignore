@@ -1,0 +1,19 @@
+# Go source (not needed for npm consumers)
+*.go
+go.mod
+go.sum
+cmd/
+pkg/
+
+# Tests
+*_test.go
+
+# GoReleaser
+.goreleaser/
+dist/
+
+# CI
+.github/
+
+# Dev files
+.gitignore

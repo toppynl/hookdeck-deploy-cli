@@ -1,0 +1,27 @@
+{
+  "name": "@toppy/hookdeck-deploy-cli",
+  "version": "0.1.0",
+  "description": "CLI for deploying Hookdeck webhook infrastructure from declarative manifests",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toppynl/hookdeck-deploy-cli.git"
+  },
+  "keywords": ["cli", "deploy", "hookdeck", "infrastructure-as-code", "webhook"],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/toppynl/hookdeck-deploy-cli/issues"
+  },
+  "homepage": "https://github.com/toppynl/hookdeck-deploy-cli#readme",
+  "bin": {
+    "hookdeck-deploy": "./bin/hookdeck-deploy-cli.js"
+  },
+  "exports": {
+    "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json",
+    "./schemas/hookdeck-transformation.schema.json": "./schemas/hookdeck-transformation.schema.json"
+  },
+  "files": ["bin/", "binaries/", "schemas/*.json"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module"
+}
