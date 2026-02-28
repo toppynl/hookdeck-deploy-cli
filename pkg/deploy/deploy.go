@@ -354,16 +354,16 @@ func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinati
 }
 
 // resolveCode reads the code file for a transformation.
-// If CodeFile is empty, returns an empty string (the API may reject it, but
-// that is an API-level concern, not ours).
+// If CodeFile is empty, defaults to "dist/index.js" (standard esbuild output).
 func resolveCode(tr *manifest.TransformationConfig, codeRoot string) (string, error) {
-	if tr.CodeFile == "" {
-		return "", nil
+	codeFile := tr.CodeFile
+	if codeFile == "" {
+		codeFile = "dist/index.js"
 	}
 
-	path := tr.CodeFile
+	path := codeFile
 	if codeRoot != "" {
-		path = codeRoot + "/" + tr.CodeFile
+		path = codeRoot + "/" + codeFile
 	}
 
 	// For now we pass the code_file path as the code value. In the real deploy
