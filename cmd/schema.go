@@ -8,9 +8,9 @@ import (
 )
 
 var schemaCmd = &cobra.Command{
-	Use:   "schema [deploy|transformation]",
+	Use:   "schema",
 	Short: "Output JSON schema for manifest files",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.NoArgs,
 	RunE:  runSchema,
 }
 
@@ -19,13 +19,6 @@ func init() {
 }
 
 func runSchema(cmd *cobra.Command, args []string) error {
-	switch args[0] {
-	case "deploy":
-		fmt.Print(schemas.DeploySchema)
-	case "transformation":
-		fmt.Print(schemas.TransformationSchema)
-	default:
-		return fmt.Errorf("unknown schema: %s (use 'deploy' or 'transformation')", args[0])
-	}
+	fmt.Print(schemas.DeploySchema)
 	return nil
 }
