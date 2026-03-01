@@ -22,8 +22,7 @@
     "hookdeck-deploy": "./bin/hookdeck-deploy-cli.cjs"
   },
   "exports": {
-    "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json",
-    "./schemas/hookdeck-transformation.schema.json": "./schemas/hookdeck-transformation.schema.json"
+    "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json"
   },
   "files": [
     "bin/",

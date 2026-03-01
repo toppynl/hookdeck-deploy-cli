@@ -188,11 +188,11 @@ Both `filter` and `transformations` are shorthands that get converted to rules d
 
 ### Transformations
 
-Transformations use a separate schema and manifest structure. Use `code_file` to point to a JavaScript file containing the transformation logic — its contents are read from disk and uploaded to Hookdeck on deploy:
+Transformations use the same schema as other manifests. Use `code_file` to point to a JavaScript file containing the transformation logic — its contents are read from disk and uploaded to Hookdeck on deploy:
 
 ```jsonc
 {
-  "$schema": "node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-transformation.schema.json",
+  "$schema": "node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
   "transformation": {
     "name": "enrich-order",
     "description": "Adds computed fields to order payload",
@@ -328,14 +328,14 @@ sources/
     hookdeck.jsonc           # Source definition (extends root)
 transformations/
   enrich-order/
-    hookdeck.jsonc           # Transformation manifest (separate schema)
+    hookdeck.jsonc           # Transformation manifest (same schema, supports extends)
     handler.js               # Transformation code
 destinations/
   order-processor/
     hookdeck.jsonc           # Destination + connection (extends root)
 ```
 
-Each sub-manifest uses `extends` to inherit the root environment profiles, so you only define your profiles once. Transformation manifests use their own schema (`hookdeck-transformation.schema.json`) and don't use `extends`.
+Each sub-manifest uses `extends` to inherit the root environment profiles, so you only define your profiles once. Transformation manifests use the same schema and can also use `extends`.
 
 See the [`example/`](./example) directory for a working version of this layout.
 
@@ -386,11 +386,8 @@ Resources must be deployed in dependency order: sources and transformations befo
 Add a `$schema` property to your manifest for IDE autocompletion and validation:
 
 ```jsonc
-// For sources, destinations, and connections:
+// For all manifests (sources, destinations, connections, transformations):
 { "$schema": "node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json" }
-
-// For standalone transformations:
-{ "$schema": "node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-transformation.schema.json" }
 ```
 
 ## Contributing
