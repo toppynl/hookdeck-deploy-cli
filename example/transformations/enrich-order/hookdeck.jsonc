@@ -1,5 +1,6 @@
 {
-  "$schema": "../../../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-transformation.schema.json",
+  "$schema": "../../../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
+  "extends": "../../hookdeck.jsonc",
   "transformation": {
     "name": "enrich-order",
     "description": "Adds computed fields to order payload before delivery",
