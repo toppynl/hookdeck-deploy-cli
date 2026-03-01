@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/manifest"
 )
@@ -214,30 +215,8 @@ func Deploy(ctx context.Context, client Client, input *DeployInput, opts Options
 			// Look up resolved IDs by name for this connection
 			sourceID := sourceIDs[conn.Source]
 			destinationID := destinationIDs[conn.Destination]
-			// For transformations referenced in the connection, pick the first
-			// matching transformation ID (used for transform rules injection).
-			var transformationID string
-			for _, trName := range conn.Transformations {
-				if id, ok := transformationIDs[trName]; ok {
-					transformationID = id
-					break
-				}
-			}
-			// Also check explicit rules for transform type
-			if transformationID == "" {
-				for _, rule := range conn.Rules {
-					if ruleType, ok := rule["type"].(string); ok && ruleType == "transform" {
-						// Try to find any transformation ID from the map
-						for _, id := range transformationIDs {
-							transformationID = id
-							break
-						}
-						break
-					}
-				}
-			}
 
-			req := buildConnectionRequest(conn, sourceID, destinationID, transformationID)
+			req := buildConnectionRequest(conn, sourceID, destinationID, transformationIDs)
 			res, err := client.UpsertConnection(ctx, req)
 			if err != nil {
 				return nil, fmt.Errorf("upserting connection %q: %w", conn.Name, err)
@@ -330,7 +309,7 @@ func buildTransformationRequest(tr *manifest.TransformationConfig, code string) 
 	return req
 }
 
-func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinationID, transformationID string) *UpsertConnectionRequest {
+func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinationID string, transformationIDs map[string]string) *UpsertConnectionRequest {
 	req := &UpsertConnectionRequest{}
 
 	if conn.Name != "" {
@@ -358,10 +337,15 @@ func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinati
 		for k, v := range rule {
 			ruleCopy[k] = v
 		}
-		// If this is a transform rule and we have a resolved transformation ID,
-		// inject it.
-		if ruleType, ok := ruleCopy["type"].(string); ok && ruleType == "transform" && transformationID != "" {
-			ruleCopy["transformation_id"] = transformationID
+		// If this is a transform rule, try to inject the resolved transformation ID
+		if ruleType, ok := ruleCopy["type"].(string); ok && ruleType == "transform" {
+			if trRef, ok := ruleCopy["transformation"].(map[string]interface{}); ok {
+				if name, ok := trRef["name"].(string); ok {
+					if id, ok := transformationIDs[name]; ok {
+						ruleCopy["transformation_id"] = id
+					}
+				}
+			}
 		}
 		rules = append(rules, ruleCopy)
 	}
@@ -374,8 +358,8 @@ func buildConnectionRequest(conn *manifest.ConnectionConfig, sourceID, destinati
 				"name": name,
 			},
 		}
-		if transformationID != "" {
-			rule["transformation_id"] = transformationID
+		if id, ok := transformationIDs[name]; ok {
+			rule["transformation_id"] = id
 		}
 		rules = append(rules, rule)
 	}
@@ -403,7 +387,7 @@ func resolveCode(tr *manifest.TransformationConfig, codeRoot string) (string, er
 
 	path := tr.CodeFile
 	if codeRoot != "" {
-		path = codeRoot + "/" + tr.CodeFile
+		path = filepath.Join(codeRoot, tr.CodeFile)
 	}
 
 	// For now we pass the code_file path as the code value. In the real deploy
