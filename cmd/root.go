@@ -14,6 +14,7 @@ var (
 	flagEnv     string
 	flagDryRun  bool
 	flagProfile string
+	flagProject string
 )
 
 var rootCmd = &cobra.Command{
@@ -36,4 +37,5 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagEnv, "env", "e", "", "environment overlay (e.g. staging, production)")
 	rootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "preview changes without applying")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "override credential profile")
+	rootCmd.PersistentFlags().StringVar(&flagProject, "project", "", "path to hookdeck.project.jsonc for project-wide deploy")
 }

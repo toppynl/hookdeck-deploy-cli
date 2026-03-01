@@ -34,28 +34,35 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Loading manifest: %s\n", manifestPath)
 
-	// 2. Load with inheritance
-	m, err := manifest.LoadWithInheritance(manifestPath)
+	// 2. Load manifest
+	m, err := manifest.LoadFile(manifestPath)
 	if err != nil {
 		return fmt.Errorf("loading manifest: %w", err)
 	}
 
-	// 3. Resolve environment overlay
-	m, err = manifest.ResolveEnv(m, flagEnv)
-	if err != nil {
-		return fmt.Errorf("resolving environment: %w", err)
+	// 3. Resolve environment overrides per resource and rebuild manifest for interpolation
+	resolvedManifest := &manifest.Manifest{}
+	for i := range m.Sources {
+		resolved := manifest.ResolveSourceEnv(&m.Sources[i], flagEnv)
+		resolvedManifest.Sources = append(resolvedManifest.Sources, *resolved)
 	}
+	for i := range m.Destinations {
+		resolved := manifest.ResolveDestinationEnv(&m.Destinations[i], flagEnv)
+		resolvedManifest.Destinations = append(resolvedManifest.Destinations, *resolved)
+	}
+	for i := range m.Transformations {
+		resolved := manifest.ResolveTransformationEnv(&m.Transformations[i], flagEnv)
+		resolvedManifest.Transformations = append(resolvedManifest.Transformations, *resolved)
+	}
+	resolvedManifest.Connections = m.Connections
 
 	// 4. Interpolate env vars (needed to resolve names that use ${VAR})
-	if err := manifest.InterpolateEnvVars(m); err != nil {
+	if err := manifest.InterpolateEnvVars(resolvedManifest); err != nil {
 		return fmt.Errorf("interpolating env vars: %w", err)
 	}
 
 	// 5. Resolve credentials
 	profileName := flagProfile
-	if profileName == "" {
-		profileName = m.Profile
-	}
 
 	creds, err := credentials.Resolve(profileName)
 	if err != nil {
@@ -69,59 +76,67 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	hasResources := false
 
-	if m.Source != nil {
+	if len(resolvedManifest.Sources) > 0 {
 		hasResources = true
-		printStatusHeader("Source")
-		info, err := client.FindSourceByName(ctx, m.Source.Name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", m.Source.Name, err)
-		} else if info == nil {
-			fmt.Fprintf(os.Stderr, "  %-30s not found\n", m.Source.Name)
-		} else {
-			line := fmt.Sprintf("  %-30s id: %s", info.Name, info.ID)
-			if info.URL != "" {
-				line += fmt.Sprintf("  url: %s", info.URL)
+		printStatusHeader("Sources")
+		for _, src := range resolvedManifest.Sources {
+			info, err := client.FindSourceByName(ctx, src.Name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", src.Name, err)
+			} else if info == nil {
+				fmt.Fprintf(os.Stderr, "  %-30s not found\n", src.Name)
+			} else {
+				line := fmt.Sprintf("  %-30s id: %s", info.Name, info.ID)
+				if info.URL != "" {
+					line += fmt.Sprintf("  url: %s", info.URL)
+				}
+				fmt.Fprintln(os.Stderr, line)
 			}
-			fmt.Fprintln(os.Stderr, line)
 		}
 	}
 
-	if m.Transformation != nil {
+	if len(resolvedManifest.Transformations) > 0 {
 		hasResources = true
-		printStatusHeader("Transformation")
-		info, err := client.FindTransformationByName(ctx, m.Transformation.Name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", m.Transformation.Name, err)
-		} else if info == nil {
-			fmt.Fprintf(os.Stderr, "  %-30s not found\n", m.Transformation.Name)
-		} else {
-			fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+		printStatusHeader("Transformations")
+		for _, tr := range resolvedManifest.Transformations {
+			info, err := client.FindTransformationByName(ctx, tr.Name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", tr.Name, err)
+			} else if info == nil {
+				fmt.Fprintf(os.Stderr, "  %-30s not found\n", tr.Name)
+			} else {
+				fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+			}
 		}
 	}
 
-	if m.Destination != nil {
+	if len(resolvedManifest.Destinations) > 0 {
 		hasResources = true
-		printStatusHeader("Destination")
-		info, err := client.FindDestinationByName(ctx, m.Destination.Name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", m.Destination.Name, err)
-		} else if info == nil {
-			fmt.Fprintf(os.Stderr, "  %-30s not found\n", m.Destination.Name)
-		} else {
-			fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+		printStatusHeader("Destinations")
+		for _, dst := range resolvedManifest.Destinations {
+			info, err := client.FindDestinationByName(ctx, dst.Name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", dst.Name, err)
+			} else if info == nil {
+				fmt.Fprintf(os.Stderr, "  %-30s not found\n", dst.Name)
+			} else {
+				fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+			}
 		}
 	}
 
-	if m.Connection != nil {
+	if len(resolvedManifest.Connections) > 0 {
 		hasResources = true
-		printStatusHeader("Connection")
-		info, err := client.FindConnectionByFullName(ctx, m.Connection.Name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", m.Connection.Name, err)
-		} else if info == nil {
-			fmt.Fprintf(os.Stderr, "  %-30s not found\n", m.Connection.Name)
-		} else {
-			fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+		printStatusHeader("Connections")
+		for _, conn := range resolvedManifest.Connections {
+			info, err := client.FindConnectionByFullName(ctx, conn.Name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %-30s error: %v\n", conn.Name, err)
+			} else if info == nil {
+				fmt.Fprintf(os.Stderr, "  %-30s not found\n", conn.Name)
+			} else {
+				fmt.Fprintf(os.Stderr, "  %-30s id: %s\n", info.Name, info.ID)
+			}
 		}
 	}
 
