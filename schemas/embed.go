@@ -5,3 +5,6 @@ import _ "embed"
 
 //go:embed hookdeck-deploy.schema.json
 var DeploySchema string
+
+//go:embed hookdeck-project.schema.json
+var ProjectSchema string

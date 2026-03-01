@@ -1,0 +1,23 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"title": "Hookdeck Project Configuration",
+	"description": "Root configuration for a Hookdeck deploy project",
+	"type": "object",
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "type": "string", "enum": ["2"] },
+		"env": {
+			"type": "object",
+			"description": "Environment configurations",
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"profile": { "type": "string", "description": "Credential profile name" }
+				},
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["version"],
+	"additionalProperties": false
+}
