@@ -1,181 +1,98 @@
 package manifest
 
 import (
+	"os"
 	"testing"
 )
 
-func TestResolveEnv_AppliesOverlay(t *testing.T) {
-	m := &Manifest{
-		Profile: "default",
-		Destination: &DestinationConfig{
-			Name:   "my-dest",
-			Config: map[string]interface{}{"url": "https://dev.example.com"},
-		},
-		Env: map[string]*EnvOverride{
-			"staging": {
-				Profile: "staging",
-				Destination: &DestinationConfig{
-					Config: map[string]interface{}{"url": "https://staging.example.com"},
-				},
-			},
+func TestResolveSourceEnv_WithOverride(t *testing.T) {
+	src := SourceConfig{
+		Name: "s1",
+		Type: "Stripe",
+		Env: map[string]*SourceOverride{
+			"production": {Type: "HMAC"},
 		},
 	}
-
-	resolved, err := ResolveEnv(m, "staging")
-	if err != nil {
-		t.Fatalf("ResolveEnv failed: %v", err)
+	resolved := ResolveSourceEnv(&src, "production")
+	if resolved.Type != "HMAC" {
+		t.Errorf("expected type 'HMAC', got '%s'", resolved.Type)
 	}
-	if resolved.Profile != "staging" {
-		t.Errorf("expected profile 'staging', got '%s'", resolved.Profile)
-	}
-	if resolved.Destination.Config["url"] != "https://staging.example.com" {
-		t.Errorf("expected staging URL, got '%v'", resolved.Destination.Config["url"])
-	}
-	if resolved.Destination.Name != "my-dest" {
-		t.Errorf("expected name preserved, got '%s'", resolved.Destination.Name)
+	if resolved.Name != "s1" {
+		t.Errorf("expected name 's1', got '%s'", resolved.Name)
 	}
 }
 
-func TestResolveEnv_NoEnvUsesBase(t *testing.T) {
-	m := &Manifest{
-		Profile: "default",
-		Source:  &SourceConfig{Name: "my-source"},
-	}
-
-	resolved, err := ResolveEnv(m, "")
-	if err != nil {
-		t.Fatalf("ResolveEnv failed: %v", err)
-	}
-	if resolved.Source.Name != "my-source" {
-		t.Errorf("expected source name preserved")
+func TestResolveSourceEnv_NoOverride(t *testing.T) {
+	src := SourceConfig{Name: "s1", Type: "Stripe"}
+	resolved := ResolveSourceEnv(&src, "production")
+	if resolved.Type != "Stripe" {
+		t.Errorf("expected type 'Stripe', got '%s'", resolved.Type)
 	}
 }
 
-func TestResolveEnv_UnknownEnvErrors(t *testing.T) {
-	m := &Manifest{
-		Env: map[string]*EnvOverride{
-			"staging": {Profile: "staging"},
-		},
-	}
-
-	_, err := ResolveEnv(m, "production")
-	if err == nil {
-		t.Fatal("expected error for unknown env")
+func TestResolveSourceEnv_EmptyEnvName(t *testing.T) {
+	src := SourceConfig{Name: "s1", Type: "Stripe"}
+	resolved := ResolveSourceEnv(&src, "")
+	if resolved.Type != "Stripe" {
+		t.Errorf("expected type 'Stripe', got '%s'", resolved.Type)
 	}
 }
 
-func TestResolveEnv_DestinationURL(t *testing.T) {
-	m := &Manifest{
-		Destination: &DestinationConfig{
-			Name: "dest",
-			URL:  "https://dev.example.com",
-		},
-		Env: map[string]*EnvOverride{
-			"staging": {
-				Destination: &DestinationConfig{
-					URL: "https://staging.example.com",
-				},
-			},
+func TestResolveDestinationEnv_WithOverride(t *testing.T) {
+	dst := DestinationConfig{
+		Name: "d1",
+		URL:  "https://dev.example.com",
+		Env: map[string]*DestinationOverride{
+			"production": {URL: "https://api.example.com", RateLimit: 50},
 		},
 	}
-	resolved, err := ResolveEnv(m, "staging")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	resolved := ResolveDestinationEnv(&dst, "production")
+	if resolved.URL != "https://api.example.com" {
+		t.Errorf("expected production URL, got '%s'", resolved.URL)
 	}
-	if resolved.Destination.URL != "https://staging.example.com" {
-		t.Errorf("expected staging URL, got %s", resolved.Destination.URL)
-	}
-	if resolved.Destination.Name != "dest" {
-		t.Errorf("expected name preserved from base, got %s", resolved.Destination.Name)
+	if resolved.RateLimit != 50 {
+		t.Errorf("expected rate_limit 50, got %d", resolved.RateLimit)
 	}
 }
 
-func TestResolveEnv_ConnectionFilterOverlay(t *testing.T) {
-	m := &Manifest{
-		Connection: &ConnectionConfig{
-			Name:   "conn",
-			Source: "src",
-			Filter: map[string]interface{}{"type": "order"},
-		},
-		Env: map[string]*EnvOverride{
-			"production": {
-				Connection: &ConnectionConfig{
-					Filter: map[string]interface{}{"type": "order", "env": "prod"},
-				},
-			},
+func TestResolveTransformationEnv_WithOverride(t *testing.T) {
+	tr := TransformationConfig{
+		Name:     "t1",
+		CodeFile: "handler.js",
+		Env:      map[string]string{"API_URL": "https://dev.example.com"},
+		EnvOverrides: map[string]*TransformationOverride{
+			"production": {Env: map[string]string{"API_URL": "https://api.example.com"}},
 		},
 	}
-	resolved, err := ResolveEnv(m, "production")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resolved.Connection.Name != "conn" {
-		t.Errorf("expected name preserved, got %s", resolved.Connection.Name)
-	}
-	if resolved.Connection.Source != "src" {
-		t.Errorf("expected source preserved, got %s", resolved.Connection.Source)
-	}
-	if resolved.Connection.Filter["env"] != "prod" {
-		t.Errorf("expected production filter overlay, got %v", resolved.Connection.Filter)
+	resolved := ResolveTransformationEnv(&tr, "production")
+	if resolved.Env["API_URL"] != "https://api.example.com" {
+		t.Errorf("expected production API_URL, got '%s'", resolved.Env["API_URL"])
 	}
 }
 
-func TestResolveEnv_DestinationAuthOverlay(t *testing.T) {
-	m := &Manifest{
-		Destination: &DestinationConfig{
-			Name:     "dest",
-			URL:      "https://api.example.com",
-			AuthType: "API_KEY",
-			Auth:     map[string]interface{}{"key": "X-Api-Key", "value": "dev-key"},
-		},
-		Env: map[string]*EnvOverride{
-			"production": {
-				Destination: &DestinationConfig{
-					Auth: map[string]interface{}{"value": "prod-key"},
-				},
-			},
-		},
-	}
-	resolved, err := ResolveEnv(m, "production")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resolved.Destination.AuthType != "API_KEY" {
-		t.Errorf("expected auth_type preserved, got %s", resolved.Destination.AuthType)
-	}
-	if resolved.Destination.Auth["key"] != "X-Api-Key" {
-		t.Errorf("expected auth key preserved, got %v", resolved.Destination.Auth["key"])
-	}
-	if resolved.Destination.Auth["value"] != "prod-key" {
-		t.Errorf("expected auth value overridden, got %v", resolved.Destination.Auth["value"])
-	}
-}
-
-func TestInterpolateEnvVars_Replaces(t *testing.T) {
-	t.Setenv("TEST_SECRET", "my-secret-value")
+func TestInterpolateManifestEnvVars(t *testing.T) {
+	os.Setenv("TEST_URL", "https://example.com")
+	defer os.Unsetenv("TEST_URL")
 
 	m := &Manifest{
-		Source: &SourceConfig{
-			Name: "source-${TEST_SECRET}",
+		Destinations: []DestinationConfig{
+			{Name: "d1", URL: "${TEST_URL}/webhooks"},
 		},
 	}
-
-	err := InterpolateEnvVars(m)
-	if err != nil {
+	if err := InterpolateEnvVars(m); err != nil {
 		t.Fatalf("InterpolateEnvVars failed: %v", err)
 	}
-	if m.Source.Name != "source-my-secret-value" {
-		t.Errorf("expected interpolated name, got '%s'", m.Source.Name)
+	if m.Destinations[0].URL != "https://example.com/webhooks" {
+		t.Errorf("expected interpolated URL, got '%s'", m.Destinations[0].URL)
 	}
 }
 
-func TestInterpolateEnvVars_ErrorOnMissing(t *testing.T) {
+func TestInterpolateManifestEnvVars_MissingVar(t *testing.T) {
 	m := &Manifest{
-		Source: &SourceConfig{
-			Name: "source-${NONEXISTENT_VAR_12345}",
+		Sources: []SourceConfig{
+			{Name: "${MISSING_VAR}"},
 		},
 	}
-
 	err := InterpolateEnvVars(m)
 	if err == nil {
 		t.Fatal("expected error for missing env var")

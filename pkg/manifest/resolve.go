@@ -7,41 +7,120 @@ import (
 	"regexp"
 )
 
-// ResolveEnv applies the environment overlay to the base manifest.
-// If envName is empty, returns the base manifest unchanged (minus env map).
-func ResolveEnv(m *Manifest, envName string) (*Manifest, error) {
-	if envName == "" {
-		result := *m
-		result.Env = nil
-		return &result, nil
-	}
-
-	if m.Env == nil {
-		return nil, fmt.Errorf("environment '%s' not found (no env block defined)", envName)
-	}
-
-	overlay, ok := m.Env[envName]
-	if !ok {
-		return nil, fmt.Errorf("environment '%s' not found in env block", envName)
-	}
-
-	result := *m
-	if overlay.Profile != "" {
-		result.Profile = overlay.Profile
-	}
-	result.Source = mergeSource(m.Source, overlay.Source)
-	result.Destination = mergeDestination(m.Destination, overlay.Destination)
-	result.Connection = mergeConnection(m.Connection, overlay.Connection)
-	result.Transformation = mergeTransformation(m.Transformation, overlay.Transformation)
-	result.Env = nil
-
-	return &result, nil
-}
-
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
-// InterpolateEnvVars replaces ${ENV_VAR} patterns in all string fields.
-// Errors if a referenced variable is not set.
+// ResolveSourceEnv applies environment-specific overrides to a source.
+func ResolveSourceEnv(src *SourceConfig, envName string) *SourceConfig {
+	result := &SourceConfig{
+		Name:        src.Name,
+		Type:        src.Type,
+		Description: src.Description,
+		Config:      src.Config,
+	}
+	if envName == "" || src.Env == nil {
+		return result
+	}
+	override, ok := src.Env[envName]
+	if !ok {
+		return result
+	}
+	if override.Type != "" {
+		result.Type = override.Type
+	}
+	if override.Description != "" {
+		result.Description = override.Description
+	}
+	if override.Config != nil {
+		result.Config = override.Config
+	}
+	return result
+}
+
+// ResolveDestinationEnv applies environment-specific overrides to a destination.
+func ResolveDestinationEnv(dst *DestinationConfig, envName string) *DestinationConfig {
+	result := &DestinationConfig{
+		Name:            dst.Name,
+		URL:             dst.URL,
+		Type:            dst.Type,
+		Description:     dst.Description,
+		AuthType:        dst.AuthType,
+		Auth:            dst.Auth,
+		Config:          dst.Config,
+		RateLimit:       dst.RateLimit,
+		RateLimitPeriod: dst.RateLimitPeriod,
+	}
+	if envName == "" || dst.Env == nil {
+		return result
+	}
+	override, ok := dst.Env[envName]
+	if !ok {
+		return result
+	}
+	if override.URL != "" {
+		result.URL = override.URL
+	}
+	if override.Type != "" {
+		result.Type = override.Type
+	}
+	if override.Description != "" {
+		result.Description = override.Description
+	}
+	if override.AuthType != "" {
+		result.AuthType = override.AuthType
+	}
+	if override.Auth != nil {
+		result.Auth = override.Auth
+	}
+	if override.Config != nil {
+		result.Config = override.Config
+	}
+	if override.RateLimit != 0 {
+		result.RateLimit = override.RateLimit
+	}
+	if override.RateLimitPeriod != "" {
+		result.RateLimitPeriod = override.RateLimitPeriod
+	}
+	return result
+}
+
+// ResolveTransformationEnv applies environment-specific overrides to a transformation.
+func ResolveTransformationEnv(tr *TransformationConfig, envName string) *TransformationConfig {
+	result := &TransformationConfig{
+		Name:        tr.Name,
+		Description: tr.Description,
+		CodeFile:    tr.CodeFile,
+	}
+	if tr.Env != nil {
+		result.Env = make(map[string]string)
+		for k, v := range tr.Env {
+			result.Env[k] = v
+		}
+	}
+	if envName == "" || tr.EnvOverrides == nil {
+		return result
+	}
+	override, ok := tr.EnvOverrides[envName]
+	if !ok {
+		return result
+	}
+	if override.Description != "" {
+		result.Description = override.Description
+	}
+	if override.CodeFile != "" {
+		result.CodeFile = override.CodeFile
+	}
+	if override.Env != nil {
+		if result.Env == nil {
+			result.Env = make(map[string]string)
+		}
+		for k, v := range override.Env {
+			result.Env[k] = v
+		}
+	}
+	return result
+}
+
+// InterpolateEnvVars replaces ${ENV_VAR} patterns in all string fields of a Manifest.
 func InterpolateEnvVars(m *Manifest) error {
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -57,7 +136,6 @@ func InterpolateEnvVars(m *Manifest) error {
 			return match
 		}
 		escaped, _ := json.Marshal(val)
-		// Strip the surrounding quotes from the JSON-encoded string
 		return escaped[1 : len(escaped)-1]
 	})
 
