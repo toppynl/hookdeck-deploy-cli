@@ -193,7 +193,7 @@
 					}
 				}
 			},
-			"required": ["name"],
+			"required": ["name", "code_file"],
 			"additionalProperties": false
 		},
 		"envOverride": {
