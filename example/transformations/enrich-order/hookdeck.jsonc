@@ -1,28 +1,19 @@
 {
-  "$schema": "../../../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
-  "extends": "../../hookdeck.jsonc",
-  "transformation": {
-    "name": "enrich-order",
-    "description": "Adds computed fields to order payload before delivery",
-    "code_file": "handler.js",
-    "env": {
-      "API_BASE_URL": "https://api-dev.example.com"
-    }
-  },
-  "env": {
-    "staging": {
-      "transformation": {
-        "env": {
-          "API_BASE_URL": "https://api-staging.example.com"
-        }
-      }
-    },
-    "production": {
-      "transformation": {
-        "env": {
-          "API_BASE_URL": "https://api.example.com"
+  "$schema": "../../../schemas/hookdeck-deploy.schema.json",
+  "transformations": [
+    {
+      "name": "enrich-order",
+      "description": "Adds computed fields to order payload",
+      "code_file": "handler.js",
+      "env": { "API_BASE_URL": "https://api-dev.example.com" },
+      "env_overrides": {
+        "staging": {
+          "env": { "API_BASE_URL": "https://api-staging.example.com" }
+        },
+        "production": {
+          "env": { "API_BASE_URL": "https://api.example.com" }
         }
       }
     }
-  }
+  ]
 }

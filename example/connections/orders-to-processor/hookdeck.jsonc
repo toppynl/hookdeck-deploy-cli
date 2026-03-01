@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../schemas/hookdeck-deploy.schema.json",
+  "connections": [
+    {
+      "name": "orders-to-processor",
+      "source": "order-webhook",
+      "destination": "order-processor",
+      "transformations": ["enrich-order"],
+      "filter": {
+        "$or": [
+          { "headers.x-event-type": "order.created" }
+        ]
+      }
+    }
+  ]
+}
