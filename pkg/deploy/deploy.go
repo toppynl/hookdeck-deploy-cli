@@ -113,10 +113,18 @@ type ResourceResult struct {
 
 // Result is the aggregate outcome of a deploy run.
 type Result struct {
-	Source         *ResourceResult `json:"source,omitempty"`
-	Transformation *ResourceResult `json:"transformation,omitempty"`
-	Destination    *ResourceResult `json:"destination,omitempty"`
-	Connection     *ResourceResult `json:"connection,omitempty"`
+	Sources         []*ResourceResult `json:"sources,omitempty"`
+	Transformations []*ResourceResult `json:"transformations,omitempty"`
+	Destinations    []*ResourceResult `json:"destinations,omitempty"`
+	Connections     []*ResourceResult `json:"connections,omitempty"`
+}
+
+// DeployInput holds the resolved resource configs to deploy.
+type DeployInput struct {
+	Sources         []*manifest.SourceConfig
+	Destinations    []*manifest.DestinationConfig
+	Transformations []*manifest.TransformationConfig
+	Connections     []*manifest.ConnectionConfig
 }
 
 // Options controls deploy behaviour.
@@ -129,14 +137,14 @@ type Options struct {
 // Deploy orchestrator
 // ---------------------------------------------------------------------------
 
-// Deploy upserts resources declared in the manifest in dependency order:
-//  1. Source
-//  2. Transformation
-//  3. Destination
-//  4. Connection (references source, destination, and optionally transformation)
+// Deploy upserts resources declared in the input in dependency order:
+//  1. Sources
+//  2. Transformations
+//  3. Destinations
+//  4. Connections (references sources, destinations, and optionally transformations)
 //
 // In dry-run mode no API calls are made and client may be nil.
-func Deploy(ctx context.Context, client Client, m *manifest.Manifest, opts Options) (*Result, error) {
+func Deploy(ctx context.Context, client Client, input *DeployInput, opts Options) (*Result, error) {
 	if !opts.DryRun && client == nil {
 		return nil, fmt.Errorf("client must not be nil in live mode")
 	}
@@ -144,69 +152,97 @@ func Deploy(ctx context.Context, client Client, m *manifest.Manifest, opts Optio
 	result := &Result{}
 
 	// Track IDs resolved from earlier upserts so that the connection step can
-	// reference them.
-	var sourceID, destinationID, transformationID string
+	// reference them by name.
+	sourceIDs := make(map[string]string)
+	destinationIDs := make(map[string]string)
+	transformationIDs := make(map[string]string)
 
-	// 1. Source
-	if m.Source != nil {
+	// 1. Sources
+	for _, src := range input.Sources {
 		if opts.DryRun {
-			result.Source = &ResourceResult{Name: m.Source.Name, Action: "would upsert"}
+			result.Sources = append(result.Sources, &ResourceResult{Name: src.Name, Action: "would upsert"})
 		} else {
-			req := buildSourceRequest(m.Source)
+			req := buildSourceRequest(src)
 			res, err := client.UpsertSource(ctx, req)
 			if err != nil {
-				return nil, fmt.Errorf("upserting source %q: %w", m.Source.Name, err)
+				return nil, fmt.Errorf("upserting source %q: %w", src.Name, err)
 			}
-			sourceID = res.ID
-			result.Source = &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"}
+			sourceIDs[src.Name] = res.ID
+			result.Sources = append(result.Sources, &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"})
 		}
 	}
 
-	// 2. Transformation (before connection, because connection rules reference it)
-	if m.Transformation != nil {
+	// 2. Transformations (before connections, because connection rules reference them)
+	for _, tr := range input.Transformations {
 		if opts.DryRun {
-			result.Transformation = &ResourceResult{Name: m.Transformation.Name, Action: "would upsert"}
+			result.Transformations = append(result.Transformations, &ResourceResult{Name: tr.Name, Action: "would upsert"})
 		} else {
-			code, err := resolveCode(m.Transformation, opts.CodeRoot)
+			code, err := resolveCode(tr, opts.CodeRoot)
 			if err != nil {
-				return nil, fmt.Errorf("resolving transformation code for %q: %w", m.Transformation.Name, err)
+				return nil, fmt.Errorf("resolving transformation code for %q: %w", tr.Name, err)
 			}
-			req := buildTransformationRequest(m.Transformation, code)
+			req := buildTransformationRequest(tr, code)
 			res, err := client.UpsertTransformation(ctx, req)
 			if err != nil {
-				return nil, fmt.Errorf("upserting transformation %q: %w", m.Transformation.Name, err)
+				return nil, fmt.Errorf("upserting transformation %q: %w", tr.Name, err)
 			}
-			transformationID = res.ID
-			result.Transformation = &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"}
+			transformationIDs[tr.Name] = res.ID
+			result.Transformations = append(result.Transformations, &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"})
 		}
 	}
 
-	// 3. Destination
-	if m.Destination != nil {
+	// 3. Destinations
+	for _, dst := range input.Destinations {
 		if opts.DryRun {
-			result.Destination = &ResourceResult{Name: m.Destination.Name, Action: "would upsert"}
+			result.Destinations = append(result.Destinations, &ResourceResult{Name: dst.Name, Action: "would upsert"})
 		} else {
-			req := buildDestinationRequest(m.Destination)
+			req := buildDestinationRequest(dst)
 			res, err := client.UpsertDestination(ctx, req)
 			if err != nil {
-				return nil, fmt.Errorf("upserting destination %q: %w", m.Destination.Name, err)
+				return nil, fmt.Errorf("upserting destination %q: %w", dst.Name, err)
 			}
-			destinationID = res.ID
-			result.Destination = &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"}
+			destinationIDs[dst.Name] = res.ID
+			result.Destinations = append(result.Destinations, &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"})
 		}
 	}
 
-	// 4. Connection
-	if m.Connection != nil {
+	// 4. Connections
+	for _, conn := range input.Connections {
 		if opts.DryRun {
-			result.Connection = &ResourceResult{Name: m.Connection.Name, Action: "would upsert"}
+			result.Connections = append(result.Connections, &ResourceResult{Name: conn.Name, Action: "would upsert"})
 		} else {
-			req := buildConnectionRequest(m.Connection, sourceID, destinationID, transformationID)
+			// Look up resolved IDs by name for this connection
+			sourceID := sourceIDs[conn.Source]
+			destinationID := destinationIDs[conn.Destination]
+			// For transformations referenced in the connection, pick the first
+			// matching transformation ID (used for transform rules injection).
+			var transformationID string
+			for _, trName := range conn.Transformations {
+				if id, ok := transformationIDs[trName]; ok {
+					transformationID = id
+					break
+				}
+			}
+			// Also check explicit rules for transform type
+			if transformationID == "" {
+				for _, rule := range conn.Rules {
+					if ruleType, ok := rule["type"].(string); ok && ruleType == "transform" {
+						// Try to find any transformation ID from the map
+						for _, id := range transformationIDs {
+							transformationID = id
+							break
+						}
+						break
+					}
+				}
+			}
+
+			req := buildConnectionRequest(conn, sourceID, destinationID, transformationID)
 			res, err := client.UpsertConnection(ctx, req)
 			if err != nil {
-				return nil, fmt.Errorf("upserting connection %q: %w", m.Connection.Name, err)
+				return nil, fmt.Errorf("upserting connection %q: %w", conn.Name, err)
 			}
-			result.Connection = &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"}
+			result.Connections = append(result.Connections, &ResourceResult{Name: res.Name, ID: res.ID, Action: "upserted"})
 		}
 	}
 
