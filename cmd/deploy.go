@@ -11,6 +11,7 @@ import (
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/deploy"
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/hookdeck"
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/manifest"
+	"github.com/toppynl/hookdeck-deploy-cli/pkg/project"
 	"github.com/toppynl/hookdeck-deploy-cli/pkg/wrangler"
 )
 
@@ -31,6 +32,17 @@ func init() {
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	// Check if we should use project mode:
+	// 1. --project flag was explicitly set, OR
+	// 2. no --file flag and a hookdeck.project.jsonc/json exists in CWD
+	if flagProject != "" || (flagFile == "" && projectFileExists()) {
+		return runProjectDeploy()
+	}
+	return runSingleFileDeploy()
+}
+
+// runSingleFileDeploy handles the single manifest file deploy flow.
+func runSingleFileDeploy() error {
 	ctx := context.Background()
 
 	// 1. Find and load manifest
@@ -41,28 +53,24 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Loading manifest: %s\n", manifestPath)
 
-	// 2. Load with inheritance (extends chain)
-	m, err := manifest.LoadWithInheritance(manifestPath)
+	m, err := manifest.LoadFile(manifestPath)
 	if err != nil {
 		return fmt.Errorf("loading manifest: %w", err)
 	}
 
-	// 3. Resolve environment overlay
-	m, err = manifest.ResolveEnv(m, flagEnv)
-	if err != nil {
-		return fmt.Errorf("resolving environment: %w", err)
-	}
+	// 2. Resolve environment overrides per resource
+	input := buildDeployInputFromManifest(m, flagEnv)
 
-	// 4. Interpolate secrets (${ENV_VAR})
-	if err := manifest.InterpolateEnvVars(m); err != nil {
+	// 3. Interpolate secrets (${ENV_VAR}) — operate on the manifest with resolved resources
+	resolvedManifest := deployInputToManifest(input)
+	if err := manifest.InterpolateEnvVars(resolvedManifest); err != nil {
 		return fmt.Errorf("interpolating env vars: %w", err)
 	}
+	// Re-extract input after interpolation
+	input = manifestToDeployInput(resolvedManifest)
 
-	// 5. Resolve credentials
+	// 4. Resolve credentials
 	profileName := flagProfile
-	if profileName == "" {
-		profileName = m.Profile
-	}
 
 	var client deploy.Client
 	if !flagDryRun {
@@ -71,11 +79,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("resolving credentials: %w", err)
 		}
 
-		// 6. Create HTTP client for Hookdeck API
+		// 5. Create HTTP client for Hookdeck API
 		client = hookdeck.NewClient(creds.APIKey, creds.ProjectID)
 	}
 
-	// 7. Run deploy orchestration
+	// 6. Run deploy orchestration
 	manifestDir := filepath.Dir(manifestPath)
 	opts := deploy.Options{
 		DryRun:   flagDryRun,
@@ -86,7 +94,82 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "Dry-run mode: no changes will be applied")
 	}
 
-	result, err := deploy.Deploy(ctx, client, m, opts)
+	result, err := deploy.Deploy(ctx, client, input, opts)
+	if err != nil {
+		return fmt.Errorf("deploy failed: %w", err)
+	}
+
+	// 7. Print results
+	printDeployResult(result)
+
+	// 8. Wrangler sync (if --sync-wrangler and at least one source was deployed)
+	if flagSyncWrangler && !flagDryRun && len(result.Sources) > 0 && result.Sources[0].ID != "" {
+		if err := syncWrangler(manifestDir, result.Sources[0].ID); err != nil {
+			// Wrangler sync is best-effort; warn but don't fail
+			fmt.Fprintf(os.Stderr, "Warning: wrangler sync failed: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// runProjectDeploy handles the project-wide deploy flow.
+func runProjectDeploy() error {
+	ctx := context.Background()
+
+	// 1. Resolve project path
+	projectPath, err := resolveProjectPath()
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Loading project: %s\n", projectPath)
+
+	// 2. Load project (config + discover manifests + registry)
+	proj, err := project.LoadProject(projectPath)
+	if err != nil {
+		return fmt.Errorf("loading project: %w", err)
+	}
+
+	// 3. Resolve profile from project config env or --profile flag
+	profileName := flagProfile
+	if profileName == "" && proj.Config.Env != nil && flagEnv != "" {
+		if envCfg, ok := proj.Config.Env[flagEnv]; ok && envCfg.Profile != "" {
+			profileName = envCfg.Profile
+		}
+	}
+
+	// 4. Build DeployInput from registry with env overrides
+	input := buildDeployInputFromRegistry(proj.Registry, flagEnv)
+
+	// 5. Interpolate env vars
+	resolvedManifest := deployInputToManifest(input)
+	if err := manifest.InterpolateEnvVars(resolvedManifest); err != nil {
+		return fmt.Errorf("interpolating env vars: %w", err)
+	}
+	input = manifestToDeployInput(resolvedManifest)
+
+	// 6. Resolve credentials and create client
+	var client deploy.Client
+	if !flagDryRun {
+		creds, err := credentials.Resolve(profileName)
+		if err != nil {
+			return fmt.Errorf("resolving credentials: %w", err)
+		}
+		client = hookdeck.NewClient(creds.APIKey, creds.ProjectID)
+	}
+
+	// 7. Deploy
+	opts := deploy.Options{
+		DryRun:   flagDryRun,
+		CodeRoot: proj.RootDir,
+	}
+
+	if flagDryRun {
+		fmt.Fprintln(os.Stderr, "Dry-run mode: no changes will be applied")
+	}
+
+	result, err := deploy.Deploy(ctx, client, input, opts)
 	if err != nil {
 		return fmt.Errorf("deploy failed: %w", err)
 	}
@@ -94,15 +177,133 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// 8. Print results
 	printDeployResult(result)
 
-	// 9. Wrangler sync (if --sync-wrangler and source was deployed)
-	if flagSyncWrangler && !flagDryRun && result.Source != nil && result.Source.ID != "" {
-		if err := syncWrangler(manifestDir, result.Source.ID); err != nil {
-			// Wrangler sync is best-effort; warn but don't fail
-			fmt.Fprintf(os.Stderr, "Warning: wrangler sync failed: %v\n", err)
+	return nil
+}
+
+// buildDeployInputFromManifest constructs a DeployInput from a loaded manifest,
+// applying per-resource environment overrides.
+func buildDeployInputFromManifest(m *manifest.Manifest, envName string) *deploy.DeployInput {
+	input := &deploy.DeployInput{}
+
+	for i := range m.Sources {
+		resolved := manifest.ResolveSourceEnv(&m.Sources[i], envName)
+		input.Sources = append(input.Sources, resolved)
+	}
+	for i := range m.Destinations {
+		resolved := manifest.ResolveDestinationEnv(&m.Destinations[i], envName)
+		input.Destinations = append(input.Destinations, resolved)
+	}
+	for i := range m.Transformations {
+		resolved := manifest.ResolveTransformationEnv(&m.Transformations[i], envName)
+		input.Transformations = append(input.Transformations, resolved)
+	}
+	for i := range m.Connections {
+		conn := m.Connections[i]
+		input.Connections = append(input.Connections, &conn)
+	}
+
+	return input
+}
+
+// buildDeployInputFromRegistry constructs a DeployInput from a project registry,
+// applying per-resource environment overrides.
+func buildDeployInputFromRegistry(reg *project.Registry, envName string) *deploy.DeployInput {
+	input := &deploy.DeployInput{}
+
+	for i := range reg.SourceList {
+		resolved := manifest.ResolveSourceEnv(&reg.SourceList[i], envName)
+		input.Sources = append(input.Sources, resolved)
+	}
+	for i := range reg.DestinationList {
+		resolved := manifest.ResolveDestinationEnv(&reg.DestinationList[i], envName)
+		input.Destinations = append(input.Destinations, resolved)
+	}
+	for i := range reg.TransformationList {
+		resolved := manifest.ResolveTransformationEnv(&reg.TransformationList[i], envName)
+		input.Transformations = append(input.Transformations, resolved)
+	}
+	for i := range reg.ConnectionList {
+		conn := reg.ConnectionList[i]
+		input.Connections = append(input.Connections, &conn)
+	}
+
+	return input
+}
+
+// deployInputToManifest converts a DeployInput back to a Manifest for interpolation.
+func deployInputToManifest(input *deploy.DeployInput) *manifest.Manifest {
+	m := &manifest.Manifest{}
+	for _, src := range input.Sources {
+		m.Sources = append(m.Sources, *src)
+	}
+	for _, dst := range input.Destinations {
+		m.Destinations = append(m.Destinations, *dst)
+	}
+	for _, tr := range input.Transformations {
+		m.Transformations = append(m.Transformations, *tr)
+	}
+	for _, conn := range input.Connections {
+		m.Connections = append(m.Connections, *conn)
+	}
+	return m
+}
+
+// manifestToDeployInput converts a Manifest to a DeployInput (pointers into the manifest slices).
+func manifestToDeployInput(m *manifest.Manifest) *deploy.DeployInput {
+	input := &deploy.DeployInput{}
+	for i := range m.Sources {
+		input.Sources = append(input.Sources, &m.Sources[i])
+	}
+	for i := range m.Destinations {
+		input.Destinations = append(input.Destinations, &m.Destinations[i])
+	}
+	for i := range m.Transformations {
+		input.Transformations = append(input.Transformations, &m.Transformations[i])
+	}
+	for i := range m.Connections {
+		input.Connections = append(input.Connections, &m.Connections[i])
+	}
+	return input
+}
+
+// resolveProjectPath determines which project config file to use.
+func resolveProjectPath() (string, error) {
+	if flagProject != "" {
+		if _, err := os.Stat(flagProject); err != nil {
+			return "", fmt.Errorf("project file not found: %s", flagProject)
+		}
+		return flagProject, nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
+	}
+
+	for _, name := range []string{"hookdeck.project.jsonc", "hookdeck.project.json"} {
+		path := filepath.Join(cwd, name)
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
 		}
 	}
 
-	return nil
+	return "", fmt.Errorf("no hookdeck.project.jsonc or hookdeck.project.json found in %s", cwd)
+}
+
+// projectFileExists checks if a hookdeck.project.jsonc or hookdeck.project.json file
+// exists in the current working directory.
+func projectFileExists() bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	for _, name := range []string{"hookdeck.project.jsonc", "hookdeck.project.json"} {
+		path := filepath.Join(cwd, name)
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveManifestPath determines which manifest file to use.
@@ -120,11 +321,14 @@ func resolveManifestPath() (string, error) {
 		return "", fmt.Errorf("getting working directory: %w", err)
 	}
 
-	path, err := manifest.FindFile(cwd)
-	if err != nil {
-		return "", err
+	for _, name := range []string{"hookdeck.jsonc", "hookdeck.json"} {
+		path := filepath.Join(cwd, name)
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
 	}
-	return path, nil
+
+	return "", fmt.Errorf("no hookdeck.jsonc or hookdeck.json found in %s", cwd)
 }
 
 // syncWrangler writes the Hookdeck source URL into the wrangler.jsonc file.
@@ -139,18 +343,11 @@ func syncWrangler(manifestDir, sourceID string) error {
 	}
 
 	// The source URL is the Hookdeck ingest URL for the source.
-	// Hookdeck sources have a URL like https://hk-<id>.hookdeck.com
-	// But we need to query the API to get the actual URL. For now,
-	// we use the source ID to construct the known URL pattern.
-	// The actual URL would come from the UpsertSourceResult, which we
-	// don't have here. For wrangler sync, we need the env name.
 	envName := flagEnv
 	if envName == "" {
 		envName = "staging" // default environment for wrangler sync
 	}
 
-	// We need the actual source URL from the API response. Since the deploy
-	// result only has ID and name, we construct the Hookdeck source URL.
 	sourceURL := fmt.Sprintf("https://hk-%s.hookdeck.com", sourceID)
 
 	modified, err := wrangler.SyncSourceURL(wranglerPath, envName, sourceURL)
@@ -165,17 +362,17 @@ func syncWrangler(manifestDir, sourceID string) error {
 
 // printDeployResult prints the deploy results to stderr.
 func printDeployResult(result *deploy.Result) {
-	if result.Source != nil {
-		printResourceResult("Source", result.Source)
+	for _, r := range result.Sources {
+		printResourceResult("Source", r)
 	}
-	if result.Transformation != nil {
-		printResourceResult("Transformation", result.Transformation)
+	for _, r := range result.Transformations {
+		printResourceResult("Transformation", r)
 	}
-	if result.Destination != nil {
-		printResourceResult("Destination", result.Destination)
+	for _, r := range result.Destinations {
+		printResourceResult("Destination", r)
 	}
-	if result.Connection != nil {
-		printResourceResult("Connection", result.Connection)
+	for _, r := range result.Connections {
+		printResourceResult("Connection", r)
 	}
 }
 

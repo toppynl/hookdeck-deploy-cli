@@ -1,48 +1,20 @@
 {
-  "$schema": "../../../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
-  "extends": "../../hookdeck.jsonc",
-  "destination": {
-    "name": "order-processor",
-    "url": "https://order-processor-dev.example.com/webhooks",
-    "rate_limit": 10,
-    "rate_limit_period": "second"
-  },
-  "connection": {
-    "name": "orders-to-processor",
-    "source": "order-webhook",
-    "filter": {
-      "$or": [
-        { "headers.x-event-type": "order.created" },
-        {
-          "$and": [
-            { "headers.x-event-type": "order.updated" },
-            { "body.status": { "$exist": true } }
-          ]
-        }
-      ]
-    },
-    "transformations": ["enrich-order"]
-  },
-  "env": {
-    "staging": {
-      "destination": {
-        "url": "https://order-processor-staging.example.com/webhooks"
-      }
-    },
-    "production": {
-      "destination": {
-        "url": "https://order-processor.example.com/webhooks",
-        "rate_limit": 50,
-        "rate_limit_period": "second"
-      },
-      "connection": {
-        "filter": {
-          "$or": [
-            { "headers.x-event-type": "order.created" },
-            { "headers.x-event-type": "order.updated" }
-          ]
+  "$schema": "../../../schemas/hookdeck-deploy.schema.json",
+  "destinations": [
+    {
+      "name": "order-processor",
+      "url": "https://order-processor-dev.example.com/webhooks",
+      "rate_limit": 10,
+      "rate_limit_period": "second",
+      "env": {
+        "staging": {
+          "url": "https://order-processor-staging.example.com/webhooks"
+        },
+        "production": {
+          "url": "https://order-processor.example.com/webhooks",
+          "rate_limit": 50
         }
       }
     }
-  }
+  ]
 }

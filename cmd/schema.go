@@ -7,6 +7,8 @@ import (
 	"github.com/toppynl/hookdeck-deploy-cli/schemas"
 )
 
+var projectFlag bool
+
 var schemaCmd = &cobra.Command{
 	Use:   "schema",
 	Short: "Output JSON schema for manifest files",
@@ -15,10 +17,15 @@ var schemaCmd = &cobra.Command{
 }
 
 func init() {
+	schemaCmd.Flags().BoolVar(&projectFlag, "project", false, "Output the project configuration schema instead of the deploy schema")
 	rootCmd.AddCommand(schemaCmd)
 }
 
 func runSchema(cmd *cobra.Command, args []string) error {
-	fmt.Print(schemas.DeploySchema)
+	if projectFlag {
+		fmt.Print(schemas.ProjectSchema)
+	} else {
+		fmt.Print(schemas.DeploySchema)
+	}
 	return nil
 }

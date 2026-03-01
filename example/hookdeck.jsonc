@@ -1,8 +1,0 @@
-{
-  "$schema": "../node_modules/@toppy/hookdeck-deploy-cli/schemas/hookdeck-deploy.schema.json",
-  // Environment profiles — each maps to a named profile in ~/.config/hookdeck/config.toml
-  "env": {
-    "staging": { "profile": "staging" },
-    "production": { "profile": "production" }
-  }
-}

@@ -1,0 +1,8 @@
+{
+  "$schema": "../schemas/hookdeck-project.schema.json",
+  "version": "2",
+  "env": {
+    "staging": { "profile": "staging" },
+    "production": { "profile": "production" }
+  }
+}

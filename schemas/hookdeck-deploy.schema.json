@@ -8,36 +8,32 @@
 			"type": "string",
 			"description": "JSON schema reference"
 		},
-		"version": {
-			"type": "string",
-			"description": "Manifest schema version",
-			"enum": ["1"]
+		"sources": {
+			"type": "array",
+			"description": "List of Hookdeck source configurations",
+			"items": {
+				"$ref": "#/definitions/source"
+			}
 		},
-		"extends": {
-			"type": "string",
-			"description": "Path to a base manifest file to inherit from"
+		"destinations": {
+			"type": "array",
+			"description": "List of Hookdeck destination configurations",
+			"items": {
+				"$ref": "#/definitions/destination"
+			}
 		},
-		"profile": {
-			"type": "string",
-			"description": "Default credential profile name (references ~/.config/hookdeck/config.toml)"
+		"connections": {
+			"type": "array",
+			"description": "List of Hookdeck connection configurations",
+			"items": {
+				"$ref": "#/definitions/connection"
+			}
 		},
-		"source": {
-			"$ref": "#/definitions/source"
-		},
-		"destination": {
-			"$ref": "#/definitions/destination"
-		},
-		"connection": {
-			"$ref": "#/definitions/connection"
-		},
-		"transformation": {
-			"$ref": "#/definitions/transformation"
-		},
-		"env": {
-			"type": "object",
-			"description": "Environment-specific overrides (e.g. staging, production)",
-			"additionalProperties": {
-				"$ref": "#/definitions/envOverride"
+		"transformations": {
+			"type": "array",
+			"description": "List of Hookdeck transformation configurations",
+			"items": {
+				"$ref": "#/definitions/transformation"
 			}
 		}
 	},
@@ -63,9 +59,36 @@
 					"type": "object",
 					"description": "Type-specific configuration. Shape depends on the source type. Values may use ${ENV_VAR} interpolation.",
 					"additionalProperties": true
+				},
+				"env": {
+					"type": "object",
+					"description": "Per-environment overrides for this source",
+					"additionalProperties": {
+						"$ref": "#/definitions/sourceOverride"
+					}
 				}
 			},
 			"required": ["name"],
+			"additionalProperties": false
+		},
+		"sourceOverride": {
+			"type": "object",
+			"description": "Per-environment overrides for a source",
+			"properties": {
+				"type": {
+					"type": "string",
+					"description": "Source verification type override"
+				},
+				"description": {
+					"type": "string",
+					"description": "Description override"
+				},
+				"config": {
+					"type": "object",
+					"description": "Type-specific configuration overrides. Values may use ${ENV_VAR} interpolation.",
+					"additionalProperties": true
+				}
+			},
 			"additionalProperties": false
 		},
 		"destination": {
@@ -100,7 +123,7 @@
 				},
 				"config": {
 					"type": "object",
-					"description": "Type-specific configuration. Shape depends on the destination type (e.g. url, auth_type, auth). Values may use ${ENV_VAR} interpolation.",
+					"description": "Type-specific configuration. Shape depends on the destination type. Values may use ${ENV_VAR} interpolation.",
 					"additionalProperties": true
 				},
 				"rate_limit": {
@@ -112,9 +135,60 @@
 					"type": "string",
 					"enum": ["second", "minute", "hour", "concurrent"],
 					"description": "Rate limit time period"
+				},
+				"env": {
+					"type": "object",
+					"description": "Per-environment overrides for this destination",
+					"additionalProperties": {
+						"$ref": "#/definitions/destinationOverride"
+					}
 				}
 			},
 			"required": ["name"],
+			"additionalProperties": false
+		},
+		"destinationOverride": {
+			"type": "object",
+			"description": "Per-environment overrides for a destination",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "Destination URL override"
+				},
+				"type": {
+					"type": "string",
+					"description": "Destination type override"
+				},
+				"description": {
+					"type": "string",
+					"description": "Description override"
+				},
+				"auth_type": {
+					"type": "string",
+					"description": "Authentication type override",
+					"enum": ["API_KEY", "HOOKDECK_SIGNATURE", "BASIC_AUTH", "CUSTOM_SIGNATURE"]
+				},
+				"auth": {
+					"type": "object",
+					"description": "Authentication configuration override. Shape depends on auth_type.",
+					"additionalProperties": true
+				},
+				"config": {
+					"type": "object",
+					"description": "Type-specific configuration overrides. Values may use ${ENV_VAR} interpolation.",
+					"additionalProperties": true
+				},
+				"rate_limit": {
+					"type": "integer",
+					"description": "Maximum delivery rate override",
+					"minimum": 0
+				},
+				"rate_limit_period": {
+					"type": "string",
+					"enum": ["second", "minute", "hour", "concurrent"],
+					"description": "Rate limit period override"
+				}
+			},
 			"additionalProperties": false
 		},
 		"connection": {
@@ -185,164 +259,21 @@
 						"type": "string"
 					}
 				},
-				"env_vars": {
+				"env_overrides": {
 					"type": "object",
-					"description": "Deprecated alias for 'env'. Environment variables available to the transformation.",
+					"description": "Per-environment overrides for this transformation",
 					"additionalProperties": {
-						"type": "string"
+						"$ref": "#/definitions/transformationOverride"
 					}
 				}
 			},
 			"required": ["name", "code_file"],
 			"additionalProperties": false
 		},
-		"envOverride": {
-			"type": "object",
-			"description": "Per-environment overrides for manifest fields",
-			"properties": {
-				"profile": {
-					"type": "string",
-					"description": "Credential profile name for this environment"
-				},
-				"source": {
-					"$ref": "#/definitions/sourceOverride"
-				},
-				"destination": {
-					"$ref": "#/definitions/destinationOverride"
-				},
-				"connection": {
-					"$ref": "#/definitions/connectionOverride"
-				},
-				"transformation": {
-					"$ref": "#/definitions/transformationOverride"
-				}
-			},
-			"additionalProperties": false
-		},
-		"sourceOverride": {
-			"type": "object",
-			"description": "Partial source configuration for environment override",
-			"properties": {
-				"name": {
-					"type": "string",
-					"description": "Source name override"
-				},
-				"type": {
-					"type": "string",
-					"description": "Source verification type override"
-				},
-				"description": {
-					"type": "string",
-					"description": "Description override"
-				},
-				"config": {
-					"type": "object",
-					"description": "Type-specific configuration overrides. Values may use ${ENV_VAR} interpolation.",
-					"additionalProperties": true
-				}
-			},
-			"additionalProperties": false
-		},
-		"destinationOverride": {
-			"type": "object",
-			"description": "Partial destination configuration for environment override",
-			"properties": {
-				"name": {
-					"type": "string",
-					"description": "Destination name override"
-				},
-				"type": {
-					"type": "string",
-					"description": "Destination type override"
-				},
-				"description": {
-					"type": "string",
-					"description": "Description override"
-				},
-				"url": {
-					"type": "string",
-					"description": "Destination URL override"
-				},
-				"auth_type": {
-					"type": "string",
-					"description": "Authentication type override",
-					"enum": ["API_KEY", "HOOKDECK_SIGNATURE", "BASIC_AUTH", "CUSTOM_SIGNATURE"]
-				},
-				"auth": {
-					"type": "object",
-					"description": "Authentication configuration override. Shape depends on auth_type.",
-					"additionalProperties": true
-				},
-				"config": {
-					"type": "object",
-					"description": "Type-specific configuration overrides. Values may use ${ENV_VAR} interpolation.",
-					"additionalProperties": true
-				},
-				"rate_limit": {
-					"type": "integer",
-					"description": "Maximum delivery rate override",
-					"minimum": 0
-				},
-				"rate_limit_period": {
-					"type": "string",
-					"enum": ["second", "minute", "hour", "concurrent"],
-					"description": "Rate limit period override"
-				}
-			},
-			"additionalProperties": false
-		},
-		"connectionOverride": {
-			"type": "object",
-			"description": "Partial connection configuration for environment override",
-			"properties": {
-				"name": {
-					"type": "string",
-					"description": "Connection name override"
-				},
-				"source": {
-					"type": "string",
-					"description": "Source name override"
-				},
-				"destination": {
-					"type": "string",
-					"description": "Destination name override"
-				},
-				"filter": {
-					"type": "object",
-					"description": "Shorthand: event filter override (converted to a filter rule). Uses MongoDB-like query syntax.",
-					"additionalProperties": true
-				},
-				"transformations": {
-					"type": "array",
-					"description": "Shorthand: transformation names override (converted to transform rules).",
-					"items": { "type": "string" }
-				},
-				"rules": {
-					"type": "array",
-					"description": "Rules override",
-					"items": {
-						"type": "object",
-						"properties": {
-							"type": {
-								"type": "string",
-								"description": "Rule type"
-							}
-						},
-						"required": ["type"],
-						"additionalProperties": true
-					}
-				}
-			},
-			"additionalProperties": false
-		},
 		"transformationOverride": {
 			"type": "object",
-			"description": "Partial transformation configuration for environment override",
+			"description": "Per-environment overrides for a transformation",
 			"properties": {
-				"name": {
-					"type": "string",
-					"description": "Transformation name override"
-				},
 				"description": {
 					"type": "string",
 					"description": "Description override"
@@ -354,13 +285,6 @@
 				"env": {
 					"type": "object",
 					"description": "Environment variable overrides. Values may use ${ENV_VAR} interpolation.",
-					"additionalProperties": {
-						"type": "string"
-					}
-				},
-				"env_vars": {
-					"type": "object",
-					"description": "Deprecated alias for 'env'. Environment variable overrides.",
 					"additionalProperties": {
 						"type": "string"
 					}

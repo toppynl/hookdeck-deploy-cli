@@ -37,39 +37,66 @@ type FieldDiff struct {
 }
 
 // RemoteState holds the live Hookdeck resources to compare against a manifest.
+// Each slice is positionally aligned with the corresponding manifest resource list.
 type RemoteState struct {
-	Source         *hookdeck.SourceDetail
-	Destination    *hookdeck.DestinationDetail
-	Connection     *hookdeck.ConnectionDetail
-	Transformation *hookdeck.TransformationDetail
+	Sources         []*hookdeck.SourceDetail
+	Destinations    []*hookdeck.DestinationDetail
+	Connections     []*hookdeck.ConnectionDetail
+	Transformations []*hookdeck.TransformationDetail
 }
 
-// Detect compares a resolved manifest against remote state and returns a list
+// Detect compares resolved manifest resources against remote state and returns a list
 // of diffs. Only resources defined in the manifest are checked; extra remote
 // resources are ignored. A nil return (or empty slice) means everything is in sync.
-func Detect(m *manifest.Manifest, remote *RemoteState) []Diff {
+//
+// The remote slices are expected to be positionally aligned with the local slices
+// (i.e., remote.Sources[0] corresponds to sources[0], etc.). A nil entry in a remote
+// slice means the resource was not found remotely.
+func Detect(
+	sources []*manifest.SourceConfig,
+	destinations []*manifest.DestinationConfig,
+	transformations []*manifest.TransformationConfig,
+	connections []*manifest.ConnectionConfig,
+	remote *RemoteState,
+) []Diff {
 	var diffs []Diff
 
-	if m.Source != nil {
-		if d := detectSource(m.Source, remote.Source); d != nil {
+	for i, src := range sources {
+		var remoteSrc *hookdeck.SourceDetail
+		if i < len(remote.Sources) {
+			remoteSrc = remote.Sources[i]
+		}
+		if d := detectSource(src, remoteSrc); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
 
-	if m.Destination != nil {
-		if d := detectDestination(m.Destination, remote.Destination); d != nil {
+	for i, dst := range destinations {
+		var remoteDst *hookdeck.DestinationDetail
+		if i < len(remote.Destinations) {
+			remoteDst = remote.Destinations[i]
+		}
+		if d := detectDestination(dst, remoteDst); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
 
-	if m.Connection != nil {
-		if d := detectConnection(m.Connection, remote.Connection); d != nil {
+	for i, conn := range connections {
+		var remoteConn *hookdeck.ConnectionDetail
+		if i < len(remote.Connections) {
+			remoteConn = remote.Connections[i]
+		}
+		if d := detectConnection(conn, remoteConn); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
 
-	if m.Transformation != nil {
-		if d := detectTransformation(m.Transformation, remote.Transformation); d != nil {
+	for i, tr := range transformations {
+		var remoteTr *hookdeck.TransformationDetail
+		if i < len(remote.Transformations) {
+			remoteTr = remote.Transformations[i]
+		}
+		if d := detectTransformation(tr, remoteTr); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
