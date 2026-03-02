@@ -1,6 +1,6 @@
 {
   "name": "@toppy/hookdeck-deploy-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI for deploying Hookdeck webhook infrastructure from declarative manifests",
   "repository": {
     "type": "git",
@@ -22,7 +22,8 @@
     "hookdeck-deploy": "./bin/hookdeck-deploy-cli.cjs"
   },
   "exports": {
-    "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json"
+    "./schemas/hookdeck-deploy.schema.json": "./schemas/hookdeck-deploy.schema.json",
+    "./schemas/hookdeck-project.schema.json": "./schemas/hookdeck-project.schema.json"
   },
   "files": [
     "bin/",
