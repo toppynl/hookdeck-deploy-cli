@@ -198,8 +198,8 @@ func buildDeployInputFromManifest(m *manifest.Manifest, envName string) *deploy.
 		input.Transformations = append(input.Transformations, resolved)
 	}
 	for i := range m.Connections {
-		conn := m.Connections[i]
-		input.Connections = append(input.Connections, &conn)
+		resolved := manifest.ResolveConnectionEnv(&m.Connections[i], envName)
+		input.Connections = append(input.Connections, resolved)
 	}
 
 	return input
@@ -223,8 +223,8 @@ func buildDeployInputFromRegistry(reg *project.Registry, envName string) *deploy
 		input.Transformations = append(input.Transformations, resolved)
 	}
 	for i := range reg.ConnectionList {
-		conn := reg.ConnectionList[i]
-		input.Connections = append(input.Connections, &conn)
+		resolved := manifest.ResolveConnectionEnv(&reg.ConnectionList[i], envName)
+		input.Connections = append(input.Connections, resolved)
 	}
 
 	return input

@@ -27,15 +27,7 @@ func buildDeployInput(reg *Registry, envName string) *deploy.DeployInput {
 		input.Transformations = append(input.Transformations, manifest.ResolveTransformationEnv(&reg.TransformationList[i], envName))
 	}
 	for i := range reg.ConnectionList {
-		c := &reg.ConnectionList[i]
-		input.Connections = append(input.Connections, &manifest.ConnectionConfig{
-			Name:            c.Name,
-			Source:          c.Source,
-			Destination:     c.Destination,
-			Rules:           c.Rules,
-			Filter:          c.Filter,
-			Transformations: c.Transformations,
-		})
+		input.Connections = append(input.Connections, manifest.ResolveConnectionEnv(&reg.ConnectionList[i], envName))
 	}
 	return input
 }
@@ -191,5 +183,85 @@ func TestIntegration_EnvOverrides(t *testing.T) {
 	// Verify the resolved destination in the input has the staging URL
 	if input.Destinations[0].URL != "https://staging.example.com/webhook" {
 		t.Errorf("deploy input destination URL: expected staging URL, got %q", input.Destinations[0].URL)
+	}
+}
+
+func TestIntegration_ConnectionEnvOverrides(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, dir, "hookdeck.project.jsonc", `{
+		"version": "2",
+		"env": {
+			"staging":    {"profile": "staging"},
+			"production": {"profile": "production"}
+		}
+	}`)
+
+	writeFile(t, dir, "transform.js", `function handler(request, context) { return request; }`)
+
+	writeFile(t, dir, "hookdeck.jsonc", `{
+		"sources": [{"name": "ingest"}],
+		"destinations": [{"name": "backend", "url": "https://api.example.com"}],
+		"transformations": [{"name": "anonymizer", "code_file": "transform.js"}],
+		"connections": [{
+			"name": "ingest-to-backend",
+			"source": "ingest",
+			"destination": "backend",
+			"filter": {"headers": {"x-env": "default"}},
+			"transformations": ["anonymizer"],
+			"env": {
+				"staging": {
+					"filter": {"headers": {"x-env": "staging"}},
+					"transformations": ["anonymizer"]
+				},
+				"production": {
+					"filter": {"headers": {"x-env": "production"}},
+					"transformations": []
+				}
+			}
+		}]
+	}`)
+
+	proj, err := LoadProject(filepath.Join(dir, "hookdeck.project.jsonc"))
+	if err != nil {
+		t.Fatalf("LoadProject failed: %v", err)
+	}
+	if len(proj.Registry.ConnectionList) != 1 {
+		t.Fatalf("expected 1 connection, got %d", len(proj.Registry.ConnectionList))
+	}
+
+	// Staging: filter overridden, transformations include anonymizer
+	stagingInput := buildDeployInput(proj.Registry, "staging")
+	stagingConn := stagingInput.Connections[0]
+	if stagingConn.Filter["headers"].(map[string]interface{})["x-env"] != "staging" {
+		t.Errorf("staging filter: expected x-env=staging, got %v", stagingConn.Filter)
+	}
+	if len(stagingConn.Transformations) != 1 || stagingConn.Transformations[0] != "anonymizer" {
+		t.Errorf("staging transformations: expected [anonymizer], got %v", stagingConn.Transformations)
+	}
+
+	// Production: filter overridden, transformations cleared
+	prodInput := buildDeployInput(proj.Registry, "production")
+	prodConn := prodInput.Connections[0]
+	if prodConn.Filter["headers"].(map[string]interface{})["x-env"] != "production" {
+		t.Errorf("production filter: expected x-env=production, got %v", prodConn.Filter)
+	}
+	if len(prodConn.Transformations) != 0 {
+		t.Errorf("production transformations: expected empty, got %v", prodConn.Transformations)
+	}
+
+	// Dry-run deploy succeeds for both environments
+	for _, env := range []string{"staging", "production"} {
+		input := buildDeployInput(proj.Registry, env)
+		result, err := deploy.Deploy(context.Background(), nil, input, deploy.Options{DryRun: true})
+		if err != nil {
+			t.Fatalf("Deploy dry-run (%s) failed: %v", env, err)
+		}
+		if len(result.Connections) != 1 {
+			t.Errorf("%s: expected 1 connection result, got %d", env, len(result.Connections))
+		}
+		if result.Connections[0].Name != "ingest-to-backend" {
+			t.Errorf("%s: expected connection name 'ingest-to-backend', got %q", env, result.Connections[0].Name)
+		}
 	}
 }

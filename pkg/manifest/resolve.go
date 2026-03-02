@@ -83,6 +83,41 @@ func ResolveDestinationEnv(dst *DestinationConfig, envName string) *DestinationC
 	return result
 }
 
+// ResolveConnectionEnv applies environment-specific overrides to a connection.
+func ResolveConnectionEnv(conn *ConnectionConfig, envName string) *ConnectionConfig {
+	result := &ConnectionConfig{
+		Name:            conn.Name,
+		Source:          conn.Source,
+		Destination:     conn.Destination,
+		Rules:           conn.Rules,
+		Filter:          conn.Filter,
+		Transformations: conn.Transformations,
+	}
+	if envName == "" || conn.Env == nil {
+		return result
+	}
+	override, ok := conn.Env[envName]
+	if !ok {
+		return result
+	}
+	if override.Source != "" {
+		result.Source = override.Source
+	}
+	if override.Destination != "" {
+		result.Destination = override.Destination
+	}
+	if override.Rules != nil {
+		result.Rules = override.Rules
+	}
+	if override.Filter != nil {
+		result.Filter = override.Filter
+	}
+	if override.Transformations != nil {
+		result.Transformations = override.Transformations
+	}
+	return result
+}
+
 // ResolveTransformationEnv applies environment-specific overrides to a transformation.
 func ResolveTransformationEnv(tr *TransformationConfig, envName string) *TransformationConfig {
 	result := &TransformationConfig{

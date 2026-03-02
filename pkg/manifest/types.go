@@ -58,8 +58,18 @@ type ConnectionConfig struct {
 	Destination string                   `json:"destination,omitempty"`
 	Rules       []map[string]interface{} `json:"rules,omitempty"`
 	// Shorthand fields — converted to rules during deploy
-	Filter          map[string]interface{} `json:"filter,omitempty"`
-	Transformations []string               `json:"transformations,omitempty"`
+	Filter          map[string]interface{}          `json:"filter,omitempty"`
+	Transformations []string                        `json:"transformations,omitempty"`
+	Env             map[string]*ConnectionOverride  `json:"env,omitempty"`
+}
+
+// ConnectionOverride holds per-environment overrides for a connection.
+type ConnectionOverride struct {
+	Source          string                   `json:"source,omitempty"`
+	Destination     string                   `json:"destination,omitempty"`
+	Rules           []map[string]interface{} `json:"rules,omitempty"`
+	Filter          map[string]interface{}   `json:"filter,omitempty"`
+	Transformations []string                 `json:"transformations,omitempty"`
 }
 
 // TransformationConfig defines a Hookdeck transformation.

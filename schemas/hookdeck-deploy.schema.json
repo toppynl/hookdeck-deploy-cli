@@ -231,9 +231,56 @@
 						"required": ["type"],
 						"additionalProperties": true
 					}
+				},
+				"env": {
+					"type": "object",
+					"description": "Per-environment overrides for this connection",
+					"additionalProperties": {
+						"$ref": "#/definitions/connectionOverride"
+					}
 				}
 			},
 			"required": ["name", "source"],
+			"additionalProperties": false
+		},
+		"connectionOverride": {
+			"type": "object",
+			"description": "Per-environment overrides for a connection",
+			"properties": {
+				"source": {
+					"type": "string",
+					"description": "Source name override"
+				},
+				"destination": {
+					"type": "string",
+					"description": "Destination name override"
+				},
+				"rules": {
+					"type": "array",
+					"description": "Rules override",
+					"items": {
+						"type": "object",
+						"properties": {
+							"type": {
+								"type": "string",
+								"description": "Rule type (e.g. filter, transform, retry, delay)"
+							}
+						},
+						"required": ["type"],
+						"additionalProperties": true
+					}
+				},
+				"filter": {
+					"type": "object",
+					"description": "Filter override. Uses MongoDB-like query syntax.",
+					"additionalProperties": true
+				},
+				"transformations": {
+					"type": "array",
+					"description": "Transformation names override",
+					"items": { "type": "string" }
+				}
+			},
 			"additionalProperties": false
 		},
 		"transformation": {

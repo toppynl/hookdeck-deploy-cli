@@ -70,6 +70,92 @@ func TestResolveTransformationEnv_WithOverride(t *testing.T) {
 	}
 }
 
+func TestResolveConnectionEnv_FilterOverride(t *testing.T) {
+	conn := ConnectionConfig{
+		Name:        "c1",
+		Source:      "src",
+		Destination: "dst",
+		Filter:      map[string]interface{}{"headers": map[string]interface{}{"x-env": "default"}},
+		Env: map[string]*ConnectionOverride{
+			"staging": {Filter: map[string]interface{}{"headers": map[string]interface{}{"x-env": "staging"}}},
+		},
+	}
+	resolved := ResolveConnectionEnv(&conn, "staging")
+	if resolved.Name != "c1" {
+		t.Errorf("expected name 'c1', got '%s'", resolved.Name)
+	}
+	if resolved.Filter["headers"].(map[string]interface{})["x-env"] != "staging" {
+		t.Errorf("expected staging filter, got %v", resolved.Filter)
+	}
+}
+
+func TestResolveConnectionEnv_TransformationsOverride(t *testing.T) {
+	conn := ConnectionConfig{
+		Name:            "c1",
+		Source:          "src",
+		Destination:     "dst",
+		Transformations: []string{"anonymizer"},
+		Env: map[string]*ConnectionOverride{
+			"production": {Transformations: []string{}},
+		},
+	}
+
+	// Staging has no override — should keep base transformations
+	resolved := ResolveConnectionEnv(&conn, "staging")
+	if len(resolved.Transformations) != 1 || resolved.Transformations[0] != "anonymizer" {
+		t.Errorf("staging: expected [anonymizer], got %v", resolved.Transformations)
+	}
+
+	// Production override with empty slice — should clear transformations
+	resolved = ResolveConnectionEnv(&conn, "production")
+	if len(resolved.Transformations) != 0 {
+		t.Errorf("production: expected empty transformations, got %v", resolved.Transformations)
+	}
+}
+
+func TestResolveConnectionEnv_NoOverride(t *testing.T) {
+	conn := ConnectionConfig{
+		Name:   "c1",
+		Source: "src",
+		Filter: map[string]interface{}{"body": "test"},
+	}
+	resolved := ResolveConnectionEnv(&conn, "production")
+	if resolved.Source != "src" {
+		t.Errorf("expected source 'src', got '%s'", resolved.Source)
+	}
+	if resolved.Filter["body"] != "test" {
+		t.Errorf("expected base filter preserved, got %v", resolved.Filter)
+	}
+}
+
+func TestResolveConnectionEnv_EmptyEnvName(t *testing.T) {
+	conn := ConnectionConfig{
+		Name:   "c1",
+		Source: "src",
+		Env: map[string]*ConnectionOverride{
+			"staging": {Source: "other-src"},
+		},
+	}
+	resolved := ResolveConnectionEnv(&conn, "")
+	if resolved.Source != "src" {
+		t.Errorf("expected source 'src' for empty envName, got '%s'", resolved.Source)
+	}
+}
+
+func TestResolveConnectionEnv_UnknownEnv(t *testing.T) {
+	conn := ConnectionConfig{
+		Name:   "c1",
+		Source: "src",
+		Env: map[string]*ConnectionOverride{
+			"staging": {Source: "staging-src"},
+		},
+	}
+	resolved := ResolveConnectionEnv(&conn, "dev")
+	if resolved.Source != "src" {
+		t.Errorf("expected source 'src' for unknown env, got '%s'", resolved.Source)
+	}
+}
+
 func TestInterpolateManifestEnvVars(t *testing.T) {
 	os.Setenv("TEST_URL", "https://example.com")
 	defer os.Unsetenv("TEST_URL")
