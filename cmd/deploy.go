@@ -160,9 +160,11 @@ func runProjectDeploy() error {
 	}
 
 	// 7. Deploy
+	// CodeRoot is empty because buildDeployInputFromRegistry already resolves
+	// each transformation's code_file to an absolute path relative to its
+	// manifest directory.
 	opts := deploy.Options{
-		DryRun:   flagDryRun,
-		CodeRoot: proj.RootDir,
+		DryRun: flagDryRun,
 	}
 
 	if flagDryRun {
@@ -220,6 +222,14 @@ func buildDeployInputFromRegistry(reg *project.Registry, envName string) *deploy
 	}
 	for i := range reg.TransformationList {
 		resolved := manifest.ResolveTransformationEnv(&reg.TransformationList[i], envName)
+		// Resolve code_file relative to the manifest directory so that
+		// project-mode deploys find the file regardless of CWD.
+		if resolved.CodeFile != "" && !filepath.IsAbs(resolved.CodeFile) {
+			if ref, ok := reg.Transformations[resolved.Name]; ok {
+				manifestDir := filepath.Dir(ref.FilePath)
+				resolved.CodeFile = filepath.Join(manifestDir, resolved.CodeFile)
+			}
+		}
 		input.Transformations = append(input.Transformations, resolved)
 	}
 	for i := range reg.ConnectionList {

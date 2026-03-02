@@ -270,6 +270,65 @@ func TestDeploy_LiveMode_ResolvesIDsForConnections(t *testing.T) {
 	}
 }
 
+func TestDeploy_LiveMode_ResolveCodeAbsolutePath(t *testing.T) {
+	// When CodeFile is already an absolute path and CodeRoot is empty,
+	// resolveCode should read from the absolute path directly.
+	// This is the project-mode behavior after resolving paths in buildDeployInputFromRegistry.
+	dir := t.TempDir()
+	codeContent := "function handler(req, ctx) { return req; }"
+
+	origReadFile := readFile
+	var capturedPath string
+	readFile = func(path string) ([]byte, error) {
+		capturedPath = path
+		return []byte(codeContent), nil
+	}
+	t.Cleanup(func() { readFile = origReadFile })
+
+	absCodePath := dir + "/transformations/my-transform/dist/index.js"
+	tr := &manifest.TransformationConfig{
+		Name:     "my-transform",
+		CodeFile: absCodePath,
+	}
+
+	code, err := resolveCode(tr, "") // empty CodeRoot (project mode)
+	if err != nil {
+		t.Fatalf("resolveCode failed: %v", err)
+	}
+	if code != codeContent {
+		t.Errorf("expected code %q, got %q", codeContent, code)
+	}
+	if capturedPath != absCodePath {
+		t.Errorf("expected readFile path %q, got %q", absCodePath, capturedPath)
+	}
+}
+
+func TestDeploy_LiveMode_ResolveCodeRelativePath(t *testing.T) {
+	// When CodeFile is relative and CodeRoot is set (single-file mode),
+	// resolveCode should join them.
+	origReadFile := readFile
+	var capturedPath string
+	readFile = func(path string) ([]byte, error) {
+		capturedPath = path
+		return []byte("code"), nil
+	}
+	t.Cleanup(func() { readFile = origReadFile })
+
+	tr := &manifest.TransformationConfig{
+		Name:     "my-transform",
+		CodeFile: "dist/index.js",
+	}
+
+	_, err := resolveCode(tr, "/some/manifest/dir")
+	if err != nil {
+		t.Fatalf("resolveCode failed: %v", err)
+	}
+	expected := "/some/manifest/dir/dist/index.js"
+	if capturedPath != expected {
+		t.Errorf("expected readFile path %q, got %q", expected, capturedPath)
+	}
+}
+
 func TestDeploy_LiveMode_NilClientErrors(t *testing.T) {
 	input := &DeployInput{
 		Sources: []*manifest.SourceConfig{{Name: "test-source"}},

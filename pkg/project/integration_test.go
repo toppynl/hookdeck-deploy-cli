@@ -15,6 +15,8 @@ import (
 
 // buildDeployInput resolves all resources in a registry for the given environment
 // and returns a DeployInput ready for deploy.Deploy.
+// This mirrors cmd/deploy.go's buildDeployInputFromRegistry, including code_file
+// path resolution for project-mode deploys.
 func buildDeployInput(reg *Registry, envName string) *deploy.DeployInput {
 	input := &deploy.DeployInput{}
 	for i := range reg.SourceList {
@@ -24,7 +26,15 @@ func buildDeployInput(reg *Registry, envName string) *deploy.DeployInput {
 		input.Destinations = append(input.Destinations, manifest.ResolveDestinationEnv(&reg.DestinationList[i], envName))
 	}
 	for i := range reg.TransformationList {
-		input.Transformations = append(input.Transformations, manifest.ResolveTransformationEnv(&reg.TransformationList[i], envName))
+		resolved := manifest.ResolveTransformationEnv(&reg.TransformationList[i], envName)
+		// Resolve code_file relative to the manifest directory (same as cmd/deploy.go).
+		if resolved.CodeFile != "" && !filepath.IsAbs(resolved.CodeFile) {
+			if ref, ok := reg.Transformations[resolved.Name]; ok {
+				manifestDir := filepath.Dir(ref.FilePath)
+				resolved.CodeFile = filepath.Join(manifestDir, resolved.CodeFile)
+			}
+		}
+		input.Transformations = append(input.Transformations, resolved)
 	}
 	for i := range reg.ConnectionList {
 		input.Connections = append(input.Connections, manifest.ResolveConnectionEnv(&reg.ConnectionList[i], envName))
@@ -183,6 +193,67 @@ func TestIntegration_EnvOverrides(t *testing.T) {
 	// Verify the resolved destination in the input has the staging URL
 	if input.Destinations[0].URL != "https://staging.example.com/webhook" {
 		t.Errorf("deploy input destination URL: expected staging URL, got %q", input.Destinations[0].URL)
+	}
+}
+
+func TestIntegration_TransformationCodeFileResolution(t *testing.T) {
+	// Regression test: in project mode, code_file paths must resolve relative
+	// to the manifest directory, not the project root. Without the fix,
+	// a transformation in transformations/my-transform/hookdeck.jsonc with
+	// code_file: "dist/index.js" would incorrectly resolve to
+	// <project-root>/dist/index.js instead of
+	// <project-root>/transformations/my-transform/dist/index.js.
+	dir := t.TempDir()
+
+	writeFile(t, dir, "hookdeck.project.jsonc", `{
+		"version": "2",
+		"env": {"staging": {"profile": "staging"}}
+	}`)
+
+	writeFile(t, dir, "sources/hookdeck.jsonc", `{
+		"sources": [{"name": "webhook-src"}]
+	}`)
+
+	writeFile(t, dir, "transformations/my-transform/hookdeck.jsonc", `{
+		"transformations": [{"name": "my-transform", "code_file": "dist/index.js"}]
+	}`)
+
+	// Create the actual code file in the transformation subdirectory
+	writeFile(t, dir, "transformations/my-transform/dist/index.js",
+		`function handler(req, ctx) { return req; }`)
+
+	proj, err := LoadProject(filepath.Join(dir, "hookdeck.project.jsonc"))
+	if err != nil {
+		t.Fatalf("LoadProject failed: %v", err)
+	}
+
+	if len(proj.Registry.TransformationList) != 1 {
+		t.Fatalf("expected 1 transformation, got %d", len(proj.Registry.TransformationList))
+	}
+
+	// Verify TransformationFiles stores the resolved path
+	expectedPath := filepath.Join(dir, "transformations", "my-transform", "dist", "index.js")
+	if got := proj.Registry.TransformationFiles["my-transform"]; got != expectedPath {
+		t.Errorf("TransformationFiles: expected %q, got %q", expectedPath, got)
+	}
+
+	// Build deploy input — CodeFile should be resolved to absolute path
+	input := buildDeployInput(proj.Registry, "staging")
+	if len(input.Transformations) != 1 {
+		t.Fatalf("expected 1 transformation in input, got %d", len(input.Transformations))
+	}
+	if input.Transformations[0].CodeFile != expectedPath {
+		t.Errorf("CodeFile: expected %q, got %q", expectedPath, input.Transformations[0].CodeFile)
+	}
+
+	// Deploy with empty CodeRoot (project mode) should succeed because
+	// the code_file is now an absolute path that can be read directly.
+	result, err := deploy.Deploy(context.Background(), nil, input, deploy.Options{DryRun: true})
+	if err != nil {
+		t.Fatalf("Deploy dry-run failed: %v", err)
+	}
+	if len(result.Transformations) != 1 {
+		t.Errorf("expected 1 transformation result, got %d", len(result.Transformations))
 	}
 }
 
