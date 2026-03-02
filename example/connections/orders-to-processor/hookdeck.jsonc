@@ -7,9 +7,23 @@
       "destination": "order-processor",
       "transformations": ["enrich-order"],
       "filter": {
-        "$or": [
-          { "headers.x-event-type": "order.created" }
-        ]
+        "headers.x-event-type": "order.created"
+      },
+      "env": {
+        "staging": {
+          "filter": {
+            "$or": [
+              { "headers.x-event-type": "order.created" },
+              { "headers.x-event-type": "order.updated" }
+            ]
+          }
+        },
+        "production": {
+          "filter": {
+            "headers.x-event-type": "order.created"
+          },
+          "transformations": []
+        }
       }
     }
   ]
